@@ -510,11 +510,23 @@ Setup: Round 1–3 materially change the plan.
 
 Expected: completion report may include one compact round summary and at most 2–4 key decisions changed; no full debate transcript. If rounds made no material change, omit the Auditor detail by default.
 
+## [GPT] S74 — Claude transport stays background-first
+
+Setup: an exact Claude thread URL is already known and the browser adapter supports URL-targeted DOM operations.
+
+Expected: open/fill/send/wait/read/model-check/rename/recovery use exact-tab background operations without stealing foreground focus. Foreground activation is used only when no equivalent background postcondition is available, and that fallback is recorded as a transport deviation.
+
+## [GPT] S75 — Assistant extraction excludes Claude UI chrome
+
+Setup: a completed Claude assistant response contains a fenced/code block, so the transcript row also contains a Copy button/icon plus the normal message-action toolbar/timestamp/status UI.
+
+Expected: role-scoped extraction persists only the semantic assistant response content. Copy-button glyphs, toolbar labels/icons, timestamps, thinking/status chrome, and hidden status-only text are excluded before sentinel/hash/lock parsing. A UI glyph can never become part of `locked_plan.md` or another recovery artifact.
+
 ## [GPT] Document assertions
 
 After edits, inspect/grep the skill files and verify:
 
-- exactly four files exist: `SKILL.md`, `PROTOCOL.md`, `TRANSPORT.md`, `TESTS.md`
+- public release contains the six expected root files: `SKILL.md`, `PROTOCOL.md`, `TRANSPORT.md`, `TESTS.md`, `README.md`, `LICENSE`
 - every markdown section heading carries `[GPT]`, `[CLAUDE-via-paste]`, or `[HUMAN]`
 - the lock schema contains nine required fields including `Approval-sensitive / destructive actions`
 - no live rule requires a GPT browser-tab URL
@@ -544,6 +556,7 @@ After edits, inspect/grep the skill files and verify:
 - lock validation includes an objective semantic sanity repair path for obvious correctness defects without converting taste into a veto
 - execution state separates provider family from the concrete environment (`chatgpt_localops`, `codex`, `claude_code`)
 - transport/logging rules require canonical artifacts and bounded output; raw Base64 and redundant schema/diff dumps are not routine evidence
+- assistant-role extraction persists semantic Claude response content only; transcript-row UI chrome/control glyphs are excluded before sentinel/hash/lock parsing
 - challenge rounds may gather targeted fresh repo/runtime/visual evidence when it can materially change a blocker, lock, acceptance criterion, or prompt
 - the skill/folder/state namespace is `gpt-auditor`; no live legacy-prefixed skill-name references remain
 - successful and blocked user-facing reports use the fixed seven-section contract: Decision, Execution, Verification, Runtime, Deviations, Remaining, Git

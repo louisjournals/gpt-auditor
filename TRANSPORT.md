@@ -54,8 +54,10 @@ Role comes from DOM/message structure, not text proximity.
 - GPT-sent challenges must be verified inside **user-role** message nodes.
 - Claude replies must be read from **assistant-role** message nodes.
 - A Claude reply quoting a GPT sentinel must never satisfy the GPT-send idempotency check.
+- For Claude assistant messages, extract the **semantic response content**, not the entire transcript-row `innerText`. Claude transcript rows can contain thinking/status chrome, timestamps, message-action toolbars, code-block Copy buttons, screen-reader status nodes, and private-use icon glyphs that are not model output. Bind to the response-content subtree (for the current Claude DOM, the `.font-claude-response` content root or an equivalent verified semantic root), exclude interactive/control descendants such as buttons, toolbars, and hidden status-only nodes, then preserve the rendered text structure of the remaining content.
+- Validate sentinels, hashes, lock parsing, and recovery artifacts against that sanitized semantic response text. UI-control glyphs or labels must never become part of a persisted Claude response or locked plan.
 
-An adapter that can return only flattened page text and cannot distinguish roles fails preflight.
+An adapter that can return only flattened page text, cannot distinguish roles, or cannot separate assistant content from embedded UI controls fails preflight.
 
 ## [GPT] Sentinels
 
@@ -136,6 +138,8 @@ If the selected execution backend cannot be verified, preserve the lock but stop
 ## [GPT] ChatGPT + LocalOps mapping
 
 Use LocalOps capabilities by postcondition, not by tool name alone.
+
+**Background-first rule:** when a browser primitive accepts an exact `tabUrl`/tab identity, use it against the Claude thread without activating or focusing that tab. Opening, filling, sending, waiting, reading, model verification, rename, and continuation recovery should stay off the user's foreground whenever equivalent background DOM control exists. Foreground activation is a fallback only when the required postcondition cannot be achieved otherwise; record that fallback as a transport deviation.
 
 Typical mapping:
 

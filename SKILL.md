@@ -51,7 +51,7 @@ Under the current default role profile, the bound Claude thread must be **Opus 5
 2. Once invoked, complete **at least 3 challenge rounds** before execution.
 3. Rounds 4–5 are allowed only for unresolved evidence-backed blockers. There is no Round 6.
 4. Consensus means blocking disagreements are resolved; preferences may remain.
-5. Bind and control the exact remote debate thread. Never automate GPT's own composer in the default ChatGPT-host profile.
+5. Bind and control the exact remote debate thread. Claude browser transport is **background-first**: target the exact thread/URL with DOM-aware operations and do not steal foreground focus when equivalent background control exists. Never automate GPT's own composer in the default ChatGPT-host profile.
 6. Every debate message uses visible sentinels: `[[AUDITOR round=N from=X]]` … `[[END round=N]]`.
 7. Match sentinels by message role, never flat page text alone.
 8. Never advance state until the preceding browser/action/state postcondition is verified.
