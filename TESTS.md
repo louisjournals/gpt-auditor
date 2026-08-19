@@ -1,0 +1,565 @@
+# [GPT] gpt-auditor Verification Suite
+
+## [GPT] Test rule
+
+This skill is specification, not executable orchestration code. Verification is therefore a mix of real end-to-end runs, scripted browser fault injection where available, and document assertions.
+
+A transport-only pass is **not** a passing suite. E2E-1 must pass before calling the skill operationally verified.
+
+For every scenario record: date/run_id, host, Claude URL, setup, observed evidence, pass/fail, and any deviation.
+
+## [GPT] E2E-1 — Real three-round orchestration
+
+Purpose: prove the actual workflow, not just isolated browser calls.
+
+Procedure:
+
+1. Start a new run and persist `state.json` outside the target repo.
+2. Supply a complete architect plan as run input. Under the default role profile this is the plan the user already obtained from Claude/Opus before invoking the auditor; do not ask Claude to create a second initial plan. Persist the exact supplied plan to `input_plan.md`.
+3. Ask the two mandatory startup choices in one gate: Claude session (`new` or `same_name_existing`) and execution backend (`gpt_codex` or `claude_claude_code`). Do not touch Claude until both are explicit.
+4. Bind a real authenticated Claude thread on **Opus 5 Max** for the default role profile. If `new` is selected, use the current GPT/Codex session title as `requested_claude_title`.
+5. Send one redacted Round-0 Context Packet that imports/anchors the supplied architect plan with verified fill/send; Round 0 must not replace it with a fresh from-scratch plan. For `new`, capture the concrete Claude URL, rename the thread to the exact requested title, and verify the readback before continuing.
+6. Run Challenges 1, 2, and 3 using sentinels and role-scoped parsing: GPT challenges; Claude/Opus revises and owns the final lock under the default role profile.
+7. After every verified transition, inspect state and confirm role profile, execution backend, `round`, `turn_state`, blocker lists, URL/title state, and send/read markers are correct.
+8. Confirm no Round 4 occurs unless Round 3 carries an evidence-backed blocker.
+9. Receive and validate a nine-field lock.
+10. Create/use a disposable **git fixture** under the run's external state/test area, record its clean baseline and declared scope, and keep it isolated from `gpt-auditor/` itself. This prevents recursive self-release loops while exercising delivery behavior.
+11. Apply the selected execution-backend profile to the fixture. Exercise at least one load-bearing harness principle for that backend without generating ceremonial files.
+12. Perform the locked small documentation-only implementation against that fixture, verify it, run an artifact-only skeptical audit, fix any P0/P1 finding, and rerun targeted regression checks until every locked criterion passes.
+13. Create exactly one final run-owned commit in the fixture, verify the new HEAD/committed paths, and confirm no push occurred.
+
+Pass: all steps have observable evidence; the supplied architect plan is preserved as the starting plan; both startup choices are explicit; exactly one GPT challenge exists for each executed challenge round in the default profile; no partial Claude response is consumed; state can explain the run without chat memory; the selected backend profile governs delivery; audit matches the run delta; new-session naming is verified when applicable; and the fixture ends with exactly one safe final commit and no push.
+
+## [GPT] S01 — Partial stream
+
+Setup: inspect Claude while it is still streaming and before the expected footer exists.
+
+Expected: `get_latest_completed` returns nothing; round and `turn_state` do not advance.
+
+## [GPT] S02 — Fill/readback failure
+
+Setup: force or simulate a composer fill whose expected round tag is absent from readback.
+
+Expected: no send occurs; state remains `ready_to_challenge`.
+
+## [GPT] S03 — Duplicate send retry
+
+Setup: execute the send routine twice for the same round.
+
+Expected: exactly one user-role message contains the GPT round tag; second attempt skips send and waits.
+
+## [GPT] S04 — Ambiguous send
+
+Setup: send click occurs but confirmation is unavailable/uncertain.
+
+Expected: state is not advanced to `challenge_sent`; recovery scans user-role messages first and produces exactly one total challenge message.
+
+## [GPT] S05 — Quoted-tag false match
+
+Setup: Claude reply quotes `[[AUDITOR round=N from=GPT]]`.
+
+Expected: assistant-role quotation does not satisfy the GPT idempotency scan.
+
+## [GPT] S06 — Restart at every turn state
+
+Setup: interrupt and resume separately at `ready_to_challenge`, `challenge_sent`, `claude_complete`, `response_processed`, and `lock_pending`.
+
+Expected: resume action follows the table; no lost round and no duplicate message.
+
+## [GPT] S07 — Second run in same workspace
+
+Setup: leave one interrupted run, then invoke the skill again without asking to resume.
+
+Expected: a new run_id is created; old run is only offered as resumable.
+
+## [GPT] S08 — Cross-host takeover
+
+Setup: attempt to mutate an existing run from a different `owner_host` without a recorded handoff.
+
+Expected: mutation stops until explicit handoff is recorded.
+
+## [GPT] S08a — Startup gate blocks Claude discovery
+
+Setup: start a fresh run with either mandatory startup choice missing.
+
+Expected: no Claude tab listing/search/open/create/bind occurs; state remains `awaiting_startup_choices`. Both session mode and execution backend must be explicit.
+
+## [GPT] S08b — Same-name session requires exact title
+
+Setup: choose `same_name_existing` while the host cannot reliably expose the current GPT/Codex session title.
+
+Expected: ask the user for the exact title before any Claude search; do not guess or open a near-match.
+
+## [GPT] S08c — Same-name duplicate is ambiguous
+
+Setup: choose `same_name_existing` and return two Claude chats with the exact requested title.
+
+Expected: bind neither; ask the user for the intended thread identifier. Never choose by tab order, recency, or near-match.
+
+## [GPT] S08d — New-session choice is explicit
+
+Setup: choose `new` and also choose an execution backend.
+
+Expected: only after both startup choices and the supplied plan are present may a new Claude chat be created/bound; the run records `claude_session_mode=new` plus the selected backend. After verified Round 0, capture and persist the resulting concrete conversation URL before reading the reply.
+
+## [GPT] S08e — Recovery artifacts survive host restart
+
+Setup: after Round 1 completes, terminate the GPT host before Round 2 is sent.
+
+Expected: external state points to the stored redacted `context_packet.md`, exact Claude response artifact, and latest full `current_plan.md`; resume does not need prior chat memory.
+
+## [GPT] S08f — Valid lock is persisted before execution
+
+Setup: Claude returns a valid nine-field lock.
+
+Expected: the exact lock block is saved to `locked_plan.md`, `locked_plan_path` is updated, and only then may `phase=locked` be written.
+
+## [GPT] S08g — New-session concrete URL capture
+
+Setup: choose `new`, successfully send Round 0 from `claude.ai/new`, but make the resulting concrete conversation URL unavailable.
+
+Expected: do not read/advance Round 0; record `adapter_failure` and stop rather than continuing with an unbound thread.
+
+## [GPT] S09 — Missing browser adapter
+
+Setup: remove one required semantic capability.
+
+Expected: preflight fails before Round 0 and names the missing postcondition; no Claude message is sent.
+
+## [GPT] S10 — Flat-text-only adapter
+
+Setup: adapter can read page text but cannot distinguish user/assistant message roles.
+
+Expected: preflight fails role-distinguishability.
+
+## [GPT] S11 — Preflight does not alter composer
+
+Setup: record Claude composer content before and after preflight.
+
+Expected: content is byte-identical; preflight sends nothing.
+
+## [GPT] S12 — Claude model mismatch
+
+Setup: bound thread is not Opus 5 Max.
+
+Expected: adapter switches to Opus 5 Max and verifies it before context transmission; if switching/verifying is unavailable, preflight stops and sends nothing.
+
+## [GPT] S13 — Mid-thread model switch
+
+Setup: model changes after a completed earlier round.
+
+Expected: detected on read; current round does not advance until Opus 5 Max is restored and verified.
+
+## [GPT] S14 — Early lock
+
+Setup: Claude emits a lock at Round 1 or 2.
+
+Expected: invalid due to minimum-three-round rule; debate continues.
+
+## [GPT] S15 — Malformed lock
+
+Setup: lock misses/empties one required field.
+
+Expected: targeted format repair requested; challenge round count unchanged.
+
+## [GPT] S16 — Acceptance criterion missing method
+
+Setup: criterion states an outcome but no verification method.
+
+Expected: lock validation fails.
+
+## [GPT] S17 — Acceptance criterion missing expected result
+
+Setup: method exists but expected result is unstated.
+
+Expected: lock validation fails.
+
+## [GPT] S18 — Evidence-free GPT veto
+
+Setup: GPT rejects a valid lock because it prefers a different design, with no blocking evidence.
+
+Expected: veto is refused as preference; does not open Round 4.
+
+## [GPT] S19 — Evidence-backed blocker at Round 3
+
+Setup: GPT provides claim + evidence + resolution condition showing correctness/hard-constraint/executability risk.
+
+Expected: Round 4 opens and discusses only that blocker.
+
+## [GPT] S20 — Round ceiling
+
+Setup: attempt Challenge 6.
+
+Expected: refused; run ends LOCK or BLOCKED.
+
+## [GPT] S21 — BLOCKED terminal
+
+Setup: final blocker remains unresolved after allowed rounds.
+
+Expected: `blocked.md` records both positions, resolving evidence, minimum user need, safest partial scope; dependent execution does not start.
+
+## [GPT] S22 — Secret redaction
+
+Setup: Context Packet source contains a fake API key or `.env`-style secret.
+
+Expected: sensitive value is replaced with typed `[REDACTED:...]` placeholder and listed, or preflight stops if redaction destroys necessary meaning; raw value is never transmitted.
+
+## [GPT] S23 — Oversized Context Packet
+
+Setup: packet exceeds the configured host bound.
+
+Expected: summarize to one message, use a verified attachment, or fail preflight; do not send ordinary multi-message chunks.
+
+## [GPT] S24 — Thread-length recovery
+
+Setup: Claude thread cannot continue due to length.
+
+Expected: continuation thread is bound and receives original compact packet + full current plan + resolved decisions/justifications + open blockers + current round + contract + nine-field schema; old/new URLs recorded; same round resumes.
+
+## [GPT] S25 — Rate limit
+
+Setup: Claude reports rate limiting.
+
+Expected: bounded backoff attempts; debate state unchanged; exhaustion becomes BLOCKED with error named.
+
+## [GPT] S26 — Capacity
+
+Setup: Claude reports capacity/unavailable state.
+
+Expected: bounded backoff attempts; state unchanged; exhaustion becomes BLOCKED.
+
+## [GPT] S27 — Timeout
+
+Setup: overall response deadline expires.
+
+Expected: inspect unread answer first, perform one bounded re-wait, never consume partial text; unresolved result becomes BLOCKED.
+
+## [GPT] S28 — Refusal
+
+Setup: Claude refuses the request.
+
+Expected: no repeated rephrasing to get around the refusal; reason is recorded and run stops for user review.
+
+## [GPT] S29 — Pre-existing dirty file delta
+
+Setup: file has user edits before lock and the run later edits it.
+
+Expected: baseline copy is captured before this run's first edit; audit delta includes only run changes.
+
+## [GPT] S30 — Incidental scope extension
+
+Setup: locked step requires an adjacent test/import/lockfile not named initially.
+
+Expected: GPT records file + reason + locked step before first touch; no scope finding. Same touch without record is a finding.
+
+## [GPT] S31 — Architectural scope expansion
+
+Setup: incidental file reveals a new architecture or hard-constraint change is required.
+
+Expected: do not treat as routine extension; trigger Architecture Escalation.
+
+## [GPT] S32 — Destructive-action discipline
+
+Setup: execution performs an approval-sensitive/destructive action absent from the lock field.
+
+Expected: audit raises P0.
+
+## [GPT] S33 — Fresh-context audit
+
+Setup: host can cheaply start a fresh GPT context for audit.
+
+Expected: auditor receives only goal, lock, run delta, and fresh evidence; remembered implementation rationale is not needed.
+
+## [GPT] S34 — Same-context audit fallback
+
+Setup: fresh context is unavailable.
+
+Expected: audit explicitly treats remembered intent as non-evidence and grades only artifacts/verification.
+
+## [GPT] S35 — Routine implementation issue
+
+Setup: the selected execution backend hits a type error, CSS issue, ordinary test failure, or package-level implementation detail that does not invalidate the lock.
+
+Expected: delivery resolves it within the selected backend; the architect debate is not re-entered.
+
+## [GPT] S36 — Architecture escalation
+
+Setup: new evidence proves a locked architectural assumption false or a required capability absent.
+
+Expected: only the bounded Architecture Escalation packet is sent; the original 3–5 round debate is not restarted.
+
+## [GPT] S37 — Completion evidence
+
+Setup: implementation appears done but one locked acceptance criterion has not been freshly verified.
+
+Expected: no completion claim; verify first.
+
+## [GPT] S38 — New Claude session adopts host title
+
+Setup: choose `new` while the current GPT/Codex session title is available.
+
+Expected: after Round 0 creates the concrete Claude thread, rename that Claude conversation to the exact current GPT/Codex session title and verify the title before continuing. If the host title cannot be read reliably, ask the user for the exact desired title before creating the Claude thread.
+
+## [GPT] S39 — Final auto-commit
+
+Setup: run inside a git repo, complete execution, audit, P0/P1 fixes, regression checks, and every locked acceptance criterion successfully.
+
+Expected: create exactly one final commit containing only this run's safely stageable delta, with a concise task-derived commit message. Do not push. Pre-existing unrelated dirty paths are excluded.
+
+## [GPT] S40 — Mixed dirty file commit safety
+
+Setup: the run edits a file that was already dirty before the run and the host cannot stage only the run-owned hunks/delta safely.
+
+Expected: do not sweep the user's pre-existing edits into the automatic commit. Stop the commit step with an explicit `commit_blocked_mixed_file` result, leave the working tree intact, and report the affected path. Never use path-level commit as a workaround when it would include pre-existing user changes.
+
+## [GPT] S41 — Self-modification release gate
+
+Setup: any run changes files under `gpt-auditor/` itself.
+
+Expected: static/document checks alone cannot release or commit the change. Start a fresh auditor run using the **final post-fix skill files**, exercise E2E-1 on its disposable fixture target, and require E2E-1 PASS plus required document/scenario checks before the final commit. `NOT RUN` or FAIL blocks release. The release E2E must not edit `gpt-auditor/` again, so it cannot recurse into another self-release gate.
+
+## [GPT] S42 — Existing project harness is first-class context
+
+Setup: target repo already contains one or more persistent harness files such as `CLAUDE.md`, `AGENTS.md`, `TASKS.md`, `TEST_CHECKLIST.md`, `QA_FINDINGS.md`, `BUG_LOG.md`, `DECISIONS.md`, `ARCHITECTURE.md`, or `HANDOFF.md`.
+
+Expected: Round 0 treats the relevant current harness state as project evidence/constraints, does not regenerate or overwrite harness files merely because they exist, and includes only load-bearing excerpts needed for the decision.
+
+## [GPT] S43 — Done-means contract is executable
+
+Setup: an app/website/feature lock has high-level acceptance criteria but omits a key user flow, validation method/command, or explicit out-of-scope boundary needed to prove completion.
+
+Expected: lock validation fails or requests targeted repair before execution. The executable delivery contract must make expected behavior, critical user flows, verification, and out-of-scope boundaries testable without inventing implementation detail.
+
+## [GPT] S44 — Skeptical product QA catches shallow completion
+
+Setup: implementation builds and tests cleanly but a core user flow is stubbed, display-only, fake, or visually polished while functionally incomplete.
+
+Expected: audit fails the run with P0/P1 as severity warrants; passing build/tests alone cannot override broken product behavior.
+
+## [GPT] S45 — Runnable app is validated as a user
+
+Setup: the target is a runnable app or website and the host has browser/simulator/MCP/Playwright-equivalent access plus relevant console/network/API/database evidence.
+
+Expected: verification exercises the locked critical user flows in the running product and inspects relevant runtime evidence. Static code inspection alone is insufficient when direct validation is reasonably available.
+
+## [GPT] S46 — Existing harness state stays truthful after delivery
+
+Setup: the locked plan explicitly includes updates to existing harness state files after implementation.
+
+Expected: update only the in-scope state that changed (for example phase/task status, QA findings, bugs, decisions, handoff); record observed facts only, create no fake entries, and leave unrelated harness files untouched.
+
+## [GPT] S47 — Startup gate collects session and execution backend
+
+Setup: start a fresh default-profile run with neither startup choice recorded.
+
+Expected: ask in one compact gate for (1) Claude session: `new` or `same_name_existing`, and (2) execution backend: `gpt_codex` or `claude_claude_code`. No Claude discovery/navigation occurs until both are explicit.
+
+## [GPT] S48 — Supplied architect plan is the debate baseline
+
+Setup: the user invokes the auditor after pasting a complete plan produced by the architect outside the skill.
+
+Expected: persist it to `input_plan.md`; Round 0 imports/anchors that plan and context but does not instruct the architect to produce another initial plan. Challenge #1 starts from the supplied plan.
+
+## [GPT] S49 — Missing architect plan blocks before debate
+
+Setup: invoke the auditor with no usable architect plan in current context or attached artifacts.
+
+Expected: ask the user to provide the plan; do not synthesize a replacement plan and do not touch Claude yet.
+
+## [GPT] S50 — GPT/Codex execution profile
+
+Setup: select `gpt_codex` as execution backend for an app/repo task.
+
+Expected: delivery treats repo-local artifacts as source of truth, uses `AGENTS.md` as a short routing map when present/needed, prefers mechanical enforcement (tests/lint/typecheck/scripts/invariants) over prose reminders, reproduces bugs before fixing, runs targeted pre-edit and broader post-edit checks, and captures reusable missing capabilities in the appropriate project artifact when load-bearing.
+
+## [GPT] S51 — Claude/Claude Code execution profile
+
+Setup: select `claude_claude_code` as execution backend for a long-running app/repo task.
+
+Expected: delivery uses a concise `CLAUDE.md` project contract when present/needed, preserves an executable done-means contract, maintains truthful handoff/continuation state when load-bearing, and follows build → skeptical QA → fix → QA/regression with real runtime validation where available.
+
+## [GPT] S52 — Harness ceremony stays load-bearing
+
+Setup: selected backend has no existing harness files and the locked task is a small bounded change.
+
+Expected: do not generate a full harness file suite. Create/update only artifacts required to execute, verify, recover, or hand off the locked work. A long-running app may justify more persistent artifacts; a small fix may justify none.
+
+## [GPT] S53 — Existing backend harness is respected
+
+Setup: repo already has `AGENTS.md` and/or `CLAUDE.md` plus shared harness artifacts.
+
+Expected: inspect relevant current content, surface conflicts with the lock, never silently overwrite, and update only files explicitly in declared scope. The locked plan outranks stale project-harness guidance for this run; durable project docs are synchronized only after verified delivery when in scope.
+
+## [GPT] S54 — Role map is explicit and future-swappable
+
+Setup: default role profile is used.
+
+Expected: state records architect, challenger, lock owner, orchestrator/auditor, and execution backend separately. Current default remains Claude/Opus architect + GPT challenger/orchestrator. The user is not asked extra role questions by default. An explicitly requested custom/reverse profile may swap model families without changing the challenge-count, lock-schema, verification, audit, or commit invariants.
+
+## [GPT] S55 — Execution backend capability failure
+
+Setup: user selects `claude_claude_code` or `gpt_codex`, but the host lacks the tools/adapter needed to execute that backend safely.
+
+Expected: debate may still reach lock if architecture transport is available, but delivery stops before first implementation write with a named backend capability blocker. Never silently execute on the other backend.
+
+## [GPT] S56 — Legacy harness skills are not runtime dependencies
+
+Setup: `my-cld-harness` and `my-codex-harness` have been retired after migration.
+
+Expected: `gpt-auditor` contains the load-bearing shared/backend-profile rules itself and has no live instruction to invoke either legacy skill.
+
+## [GPT] S57 — Complete run-delta includes untracked and deleted paths
+
+Setup: a run modifies tracked files, creates two new untracked files, and deletes one tracked file before skeptical audit.
+
+Expected: the canonical run-delta manifest includes all tracked modifications, staged/unstaged state, untracked new files, and deletions. Scope, prohibited-path, audit, and commit checks consume that complete manifest rather than plain `git diff` output. Audit cannot declare 0 P0/P1 while any run-owned path is absent from the reviewed manifest.
+
+## [GPT] S58 — Runtime durability is reported, not just liveness
+
+Setup: verification starts or observes a server/worker/tunnel/job that is currently healthy but has a lease/TTL, supervisor, restart policy, or other lifecycle semantics.
+
+Expected: final verification records current health plus durability metadata: temporary/permanent/unknown, lease expiry when known, supervisor/restart owner when known, and any action required to keep it alive. `HTTP 200 now` alone is insufficient when lifecycle evidence is available.
+
+## [GPT] S59 — Execution deviations are explicit
+
+Setup: execution reasonably departs from a locked operational expectation without invalidating architecture, for example a server restart becomes necessary although the lock said no restart should be required.
+
+Expected: `final_verification.md` contains `Execution deviations` with the observed deviation, reason, effect, and whether architecture/acceptance criteria remain valid; write literal `NONE` when there were no deviations. Do not hide a deviation merely because the final product passes.
+
+## [GPT] S60 — Baseline claims are evidence-qualified
+
+Setup: final verification sees warnings/errors in files outside the run delta but no pre-change baseline captured those exact warnings.
+
+Expected: do not call them `pre-existing`. State only what evidence proves (for example `originates from files outside the run-owned delta`). A `pre-existing` claim requires matching pre-change evidence or another independently verified baseline source.
+
+## [GPT] S61 — Protocol normalization happens before Round 1
+
+Setup: the supplied plan contains inherited/report-only instructions that conflict with current auditor protocol, such as `no commit`, while the current user did not explicitly request that override.
+
+Expected: before Round 0 transmission, normalize protocol conflicts into a recorded `protocol_normalization` artifact/section and present the active execution contract to the architect. Current explicit user instructions outrank auditor defaults; stale or inherited plan text does not silently override active protocol. Avoid spending Round 4 on a contradiction that was mechanically knowable before debate.
+
+## [GPT] S62 — Lock gets semantic sanity validation
+
+Setup: a Round-3 lock is structurally complete and testable but contains an obvious product/copy correctness defect such as protecting `1 details`, an impossible numeric invariant, or mutually inconsistent labels.
+
+Expected: request a targeted semantic lock repair without opening a new challenge round. Do not reject for subjective taste; only repair evidence-backed obvious correctness defects in the expected result itself.
+
+## [GPT] S63 — Execution provenance distinguishes family from environment
+
+Setup: the user chooses the `GPT/Codex` execution family but implementation actually runs in ChatGPT + LocalOps rather than Codex.
+
+Expected: state records `execution_family=openai` and `execution_environment=chatgpt_localops`; `codex` is recorded only when Codex actually executes. Claude Code records `execution_family=anthropic` and `execution_environment=claude_code`. Final reporting uses the concrete environment rather than an ambiguous combined label.
+
+## [GPT] S64 — Transport and logging stay bounded
+
+Setup: a large supplied plan/context and several rounds would tempt repeated full dumps, Base64 output, redundant tool-schema rediscovery, or broad diff printing.
+
+Expected: keep one canonical persisted plan/context artifact, send only load-bearing bounded challenge content plus required full-plan restatements, never print raw Base64 payloads merely for transport, reuse already-discovered tool schemas unless capabilities changed, and prefer targeted manifest/diff reads. Recovery may resend the bounded rehydration packet when genuinely required.
+
+## [GPT] S65 — Challenger reads repo when it materially improves the challenge
+
+Setup: the supplied/revised plan makes a load-bearing claim about current architecture or behavior that can be verified from a small set of repo files/tests.
+
+Expected: before composing the challenge, inspect only the relevant repo evidence, record source/result, and use it to sharpen the challenge. Do not read the whole repo or make implementation edits.
+
+## [GPT] S66 — Challenger performs targeted visual/runtime audit
+
+Setup: an app/website plan depends on a claim about current UI hierarchy, responsive behavior, navigation, runtime state, or a visible defect that cannot be resolved confidently from code alone, and a safe current runtime is available.
+
+Expected: inspect the relevant surface with browser/simulator/Playwright/MCP-equivalent evidence (for example exact viewport + DOM/screenshot + console/network when relevant), then challenge the architect with the concrete observation and its implication. Do not turn this into a full product audit unless the disputed claim requires it.
+
+## [GPT] S67 — Pre-lock evidence gathering stays read-only
+
+Setup: during Round 1 or 2, investigation reveals an obvious one-line code fix.
+
+Expected: do not patch it before LOCK. Record the evidence and challenge the plan/acceptance criteria. Diagnostic commands must not mutate meaningful project/user data; use a safe fixture/read-only path or skip the diagnostic.
+
+## [GPT] S68 — Evidence-on-demand is not mandatory ceremony
+
+Setup: the challenge is conceptual and all material facts are already proven in the Context Packet/current plan.
+
+Expected: do not run repo scans, visual QA, or redundant commands just because tools are available. Compose the challenge directly from existing evidence.
+
+## [GPT] S69 — Challenge prompt carries concise evidence, not raw dumps
+
+Setup: targeted repo/runtime inspection produces large logs/screenshots/source context.
+
+Expected: outgoing challenge contains only the load-bearing claim, evidence/procedure, consequence, and required plan question/change. Persist larger evidence externally when needed; do not paste raw full logs/files into Claude by default.
+
+## [GPT] S70 — Successful completion report is compact and fixed-shape
+
+Setup: a run finishes successfully with a verified commit, runtime QA, and one non-blocking P2.
+
+Expected: chat output uses `Decision → Execution → Verification → Runtime → Deviations → Remaining → Git`, names the concrete execution environment and commit, includes the P2 under Remaining, uses `Deviations: NONE` when applicable, and does not dump the full lock/diff/state artifacts.
+
+## [GPT] S71 — Completion report preserves runtime durability
+
+Setup: a local preview is healthy but leased/temporary.
+
+Expected: Runtime reports health plus `Durability: temporary` and known lease/TTL/restart semantics; it must not merely say `running`.
+
+## [GPT] S72 — Blocked run cannot look DONE
+
+Setup: execution or commit is blocked by an unresolved P0/backend/mixed-file issue.
+
+Expected: report starts `BLOCKED`, preserves the same seven-section order, states exact evidence and minimum next action, and makes no completion/commit claim.
+
+## [GPT] S73 — Auditor detail is proportional
+
+Setup: Round 1–3 materially change the plan.
+
+Expected: completion report may include one compact round summary and at most 2–4 key decisions changed; no full debate transcript. If rounds made no material change, omit the Auditor detail by default.
+
+## [GPT] Document assertions
+
+After edits, inspect/grep the skill files and verify:
+
+- exactly four files exist: `SKILL.md`, `PROTOCOL.md`, `TRANSPORT.md`, `TESTS.md`
+- every markdown section heading carries `[GPT]`, `[CLAUDE-via-paste]`, or `[HUMAN]`
+- the lock schema contains nine required fields including `Approval-sensitive / destructive actions`
+- no live rule requires a GPT browser-tab URL
+- no numeric file/module threshold controls skill activation
+- no user-mediated transport fallback is offered
+- `TRANSPORT.md` requires role-scoped matching
+- `PROTOCOL.md` contains literal R0–R5, lock-repair, and Architecture Escalation templates
+- `TESTS.md` starts with E2E-1 and states transport-only success is insufficient
+- a new Claude session is renamed to the exact current GPT/Codex session title before debate continues
+- successful git runs auto-commit exactly one final run-owned commit and never auto-push
+- mixed pre-existing dirty-file content is never swept into an automatic commit
+- any modification to `gpt-auditor/` itself requires E2E-1 PASS on the final post-fix files before release/commit
+- existing project harness files are treated as evidence/constraints and are not regenerated or overwritten merely because the auditor runs
+- app/website/feature locks require an executable done-means contract covering expected behavior, critical user flows, verification, and out-of-scope boundaries
+- runnable products are validated with real user-flow/runtime evidence when reasonably available; clean build/tests alone cannot excuse a broken core flow
+- skeptical audit explicitly checks completeness vs stubs/fake/display-only behavior and keeps harness state truthful when updates are in scope
+- startup gate requires both Claude session choice and execution backend choice before Claude discovery
+- a supplied architect plan is persisted and used as the Round-0 baseline; Round 0 does not regenerate the initial plan
+- state separates architect/challenger/lock-owner/orchestrator from execution backend, with current default profile documented and custom/reverse roles opt-in only
+- GPT/Codex and Claude/Claude Code execution profiles preserve their load-bearing harness principles without forcing full harness generation
+- no live rule depends on `my-cld-harness` or `my-codex-harness`
+- skeptical audit/scope/prohibited-path checks use a complete canonical run-delta manifest that includes untracked new files and deletions, not plain `git diff` alone
+- runtime verification distinguishes liveness from lifecycle durability and reports known lease/supervisor/restart semantics
+- final verification always records `Execution deviations`, using literal `NONE` when applicable
+- `pre-existing` claims require actual baseline evidence; otherwise reporting is limited to what the run delta proves
+- protocol conflicts mechanically knowable before debate are normalized before Round 1 while current explicit user instructions remain authoritative
+- lock validation includes an objective semantic sanity repair path for obvious correctness defects without converting taste into a veto
+- execution state separates provider family from the concrete environment (`chatgpt_localops`, `codex`, `claude_code`)
+- transport/logging rules require canonical artifacts and bounded output; raw Base64 and redundant schema/diff dumps are not routine evidence
+- challenge rounds may gather targeted fresh repo/runtime/visual evidence when it can materially change a blocker, lock, acceptance criterion, or prompt
+- the skill/folder/state namespace is `gpt-auditor`; no live legacy-prefixed skill-name references remain
+- successful and blocked user-facing reports use the fixed seven-section contract: Decision, Execution, Verification, Runtime, Deviations, Remaining, Git
+- normal completion reporting is concise and does not dump full debate/lock/diff/state artifacts
+- pre-lock challenge investigation is read-only and may not implement fixes or mutate meaningful project/user data
+- evidence-on-demand is optional rather than mandatory ceremony; when used, the outgoing challenge carries concise provenance and implications instead of raw dumps
+
+## [GPT] Reporting
+
+Report a suite as:
+
+```text
+E2E-1: PASS | FAIL | NOT RUN
+Scenarios: X/Y PASS
+Document assertions: PASS | FAIL
+Overall: PASS only when E2E-1 passes and all required scenarios/assertions for the release pass
+```
+
+Never convert `NOT RUN` into a pass.
