@@ -50,6 +50,8 @@ Do not use it automatically for routine copy edits, obvious one-file fixes, form
 
 ## Requirements
 
+> **Important:** Full automation requires a tool-capable ChatGPT/Codex environment and an authenticated Claude session; a plain chat-only environment cannot run the complete workflow.
+
 The default profile expects:
 
 1. A supplied architect plan. `gpt-auditor` does not replace the initial planning step.
