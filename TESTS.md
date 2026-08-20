@@ -26,11 +26,13 @@ Procedure:
 10. Create/use a disposable **git fixture** under the run's external state/test area and keep it isolated from `gpt-auditor/` itself. Record its clean baseline and declared scope **before** writing the repo lock artifact.
 11. Persist the exact validated lock to the fixture's `.gpt-auditor/LOCKED_PLAN.md`, re-read it, record its SHA-256, and confirm the new file is visible as run-owned delta.
 12. Apply the selected execution-backend preflight to the fixture without implementation writes. Exercise at least one load-bearing harness principle for that backend without generating ceremonial files.
-13. Re-read the repo locked-plan artifact, present a compact execution summary including executor/out-of-scope/destructive-action status, and obtain explicit user execution approval bound to the exact plan hash. Re-hash immediately before implementation and require equality.
-14. Perform the approved small documentation-only implementation against that fixture **from the repo locked-plan artifact rather than chat memory**, verify it, run an artifact-only skeptical audit, fix any P0/P1 finding, and rerun targeted regression checks until every locked criterion passes.
-15. Create exactly one final run-owned commit in the fixture, including the repo locked-plan artifact when it is part of the run-owned declared scope, verify the new HEAD/committed paths, and confirm no push occurred.
+13. Re-read the repo locked-plan artifact, present a compact execution summary including executor/out-of-scope/destructive-action status, and obtain the **single normal user execution approval** anchored to the root plan hash plus the non-material repair envelope. Re-hash immediately before implementation and require equality. Do not ask for another generic `approve` later in the run.
+14. Perform the approved small documentation-only implementation against that fixture **from the repo locked-plan artifact rather than chat memory** and create `execution_completion.md` enumerating every locked implementation step and acceptance criterion with evidence.
+15. Send the current repo lock + completion matrix + canonical changed-path summary through the verified Claude transport. Require the Architect Completion Gate to check every item and return `ALL PASS`; if it returns `INCOMPLETE`, close the exact gaps and repeat. Do not start skeptical audit before `ALL PASS`.
+16. Run the deep skeptical audit across all eight audit dimensions, fix every P0/P1, rerun targeted regression plus every locked acceptance criterion, and write/surface the informational pre-commit delivery report containing all changes, completion-gate result, audit findings, fixes, verification/deviations, and exact commit scope. The report must not ask for approval.
+17. Create exactly one final run-owned commit in the fixture, including the repo locked-plan artifact when it is part of the run-owned declared scope, verify the new HEAD/committed paths, and confirm no push occurred.
 
-Pass: all steps have observable evidence; the supplied architect plan is preserved as the starting plan; both startup choices are explicit; exactly one GPT challenge exists for each executed challenge round in the default profile; no partial Claude response is consumed; state can explain the run without chat memory; the exact validated lock is persisted inside the target repo before implementation; backend preflight precedes approval; explicit user approval is bound to the repo plan hash; execution uses that artifact as its task authority; the selected backend profile governs delivery; audit matches the run delta; new-session naming is verified when applicable; and the fixture ends with exactly one safe final commit and no push.
+Pass: all steps have observable evidence; the supplied architect plan is preserved as the starting plan; both startup choices are explicit; exactly one GPT challenge exists for each executed challenge round in the default profile; no partial Claude response is consumed; state can explain the run without chat memory; the exact validated lock is persisted inside the target repo before implementation; backend preflight precedes the **single normal approval**; execution uses the current approved repo artifact + repair chain as its authority; the Architect Completion Gate returns `ALL PASS` before skeptical audit; all eight audit dimensions are explicitly judged; the pre-commit delivery report is surfaced without another approval prompt; new-session naming is verified when applicable; and the fixture ends with exactly one safe final commit and no push.
 
 ## [GPT] S01 — Partial stream
 
@@ -530,29 +532,89 @@ Setup: Round 3 returns a valid lock in a git target workspace.
 
 Expected: record baseline first, then write the exact validated lock to `.gpt-auditor/LOCKED_PLAN.md` (or explicit equivalent), re-read it, record SHA-256, and include it as run-owned delta. No implementation write occurs before this succeeds.
 
-## [GPT] S77 — User execution approval is hash-bound
+## [GPT] S77 — User execution approval is single-gate and root-hash anchored
 
 Setup: repo lock artifact and backend preflight are valid, but the user has not yet answered the post-lock execution summary.
 
-Expected: show only a compact 3–8 bullet summary derived from the repo artifact, including the selected execution path in generic capability terms, material out-of-scope boundaries, and destructive-action status; state waits at `awaiting_execution_approval`. LOCK itself, startup backend selection, or an earlier generic `go ahead` is not execution approval. Only an explicit response to this gate records approval for the exact repo plan hash, and private/local-only tool names are not exposed in the summary.
+Expected: show only a compact 3–8 bullet summary derived from the repo artifact, including the selected execution path in generic capability terms, material out-of-scope boundaries, destructive-action status, root hash, and the narrow non-material repair envelope; state waits at `awaiting_execution_approval`. LOCK itself, startup backend selection, or an earlier generic `go ahead` is not execution approval. An explicit response to this gate records the run's **one normal execution approval** with `approval_root_hash=current_plan_hash`; private/local-only tool names are not exposed. Later audit/commit phases do not ask `approve` again.
 
-## [GPT] S78 — Plan drift invalidates approval
+## [GPT] S78 — Non-material repair keeps approval; material change asks a specific decision
 
-Setup: the user approves hash A, then `.gpt-auditor/LOCKED_PLAN.md` changes to hash B or a new task-changing user instruction materially alters scope/steps/criteria.
+Setup: the user approves root hash A. Case 1: later evidence requires a lock repair to hash B that preserves goal/product direction, permissions/scopes, destructive actions, external side-effect blast radius, executor, architecture, and acceptance burden. Case 2: a proposed change crosses one of those boundaries.
 
-Expected: prior approval becomes invalid; no further implementation write occurs. Reconcile the lock, persist/re-hash the updated repo artifact, re-summarize it, and obtain fresh approval bound to hash B.
+Expected: Case 1 records `{old_hash:A,new_hash:B,reason,evidence}` in `repair_chain`, updates `current_plan_hash`, and continues without another generic approval prompt. Case 2 stops affected work with `execution_approval.status=change_decision_required` and asks one specific user decision describing the material change; it does not enter a repeated `approve this hash` loop.
 
-## [GPT] S79 — Executor follows repo plan, not chat memory
+## [GPT] S79 — Executor follows current repo plan and repair chain, not chat memory
 
-Setup: session history contains an old requirement that conflicts with the approved repo locked-plan artifact, or execution resumes in a fresh context.
+Setup: session history contains an old requirement that conflicts with the current approved repo locked-plan artifact, or execution resumes in a fresh context after a non-material repair.
 
-Expected: executor re-reads and hash-checks the approved repo artifact and follows it. Remembered debate/session content is non-authoritative for task requirements. A current task-changing user instruction triggers approval invalidation rather than silently altering execution.
+Expected: executor re-reads and hash-checks the current repo artifact, loads the recorded repair chain, and follows that execution contract. Remembered debate/session content is non-authoritative for task requirements. A current task-changing user instruction follows the material-change decision rule rather than silently altering execution.
 
 ## [GPT] S80 — Private executor tooling stays private
 
 Setup: the run explicitly selects `other_verified` for a coding agent whose concrete local transport/tool stack is private to one operator.
 
 Expected: state records `execution_backend=other_verified`, a generic executor label, truthful provider family when known, and verified capability evidence. Public docs, public release artifacts, and user-facing execution summaries do not name or require the private tool stack. The orchestrator/chat host is not silently substituted as executor, and the same repo-plan/hash/approval/verification/commit invariants still apply.
+
+## [GPT] S81 — Architect Completion Gate catches omitted locked work
+
+Setup: executor reports the task finished but its `execution_completion.md` marks or implicitly omits one locked implementation step while the rest is done.
+
+Expected: the architect receives the current repo lock, full completion matrix, canonical changed-path summary, and relevant evidence; it returns `INCOMPLETE` naming the exact missing/unproven item. `architect_completion_gate.status=incomplete`; skeptical audit does not start. The executor completes the gap, refreshes evidence, resubmits, and only `ALL PASS` permits audit.
+
+## [GPT] S82 — Architect ALL PASS requires evidence for every step and criterion
+
+Setup: executor's completion matrix claims every item is done but two rows have no evidence reference or directly inspected read-only evidence.
+
+Expected: architect may not return `ALL PASS` from the claim alone. It returns `INCOMPLETE`/requests targeted evidence for those exact rows. A valid `ALL PASS` response covers every locked Implementation step and Acceptance criterion line by line and is consumed only with the expected completion-check attempt sentinels.
+
+## [GPT] S83 — Skeptical audit has explicit eight-dimension depth
+
+Setup: Architect Completion Gate has passed and the implementation builds cleanly, but runtime/UX/data/regression evidence is mixed.
+
+Expected: audit explicitly records `PASS|FAIL|N/A` with reason/evidence for all eight dimensions: lock conformance, functional/runtime, data/auth/permissions/side effects, regression, UX/IA/affordance/visual, implementation depth/wiring, scope/delta hygiene, and verification quality. It actively tries to falsify completion; green build/tests do not override a broken observed flow. P0/P1 block delivery and are fixed before regression/commit; P2 is reported but not auto-fixed by default.
+
+## [GPT] S84 — Pre-commit report is visible and not another approval gate
+
+Setup: execution, Architect Completion Gate, audit, required fixes, and regression all pass and one final commit is ready.
+
+Expected: before commit, `precommit_report.md` is written and the user is shown all run-owned changes, completion-gate result, every audit finding, P0/P1 fixes, verification/deviations, remaining P2/known issues, exact commit scope, and intended message. The report does not ask for `approve` and does not create a wait state; unless the user already said stop/cancel/do-not-commit or a blocker exists, the same run proceeds to the single final commit.
+
+## [GPT] S85 — Operator review precedes UX plan debate
+
+Setup: a supplied UX/IA/affordance plan was written from an AI audit, but no fresh operator review of the current product is recorded.
+
+Expected: debate does not start. The auditor asks the operator to inspect/use the product first, persists the operator findings, requires a refreshed architect plan, and only then permits Round 0. Pure perceptual findings are treated as operator evidence rather than AI debate topics.
+
+## [GPT] S86 — Pattern completeness precedes modification scope
+
+Setup: one route shows a duplicated title / false-affordance pattern and the initial plan scopes the fix only to that route.
+
+Expected: before scope freeze, the auditor performs a read-only sibling-pattern inventory across analogous routes/components/states. Modification scope is decided after that inventory. A narrow write scope is allowed only with an explicit reason; observation is not limited by the write scope.
+
+## [GPT] S87 — Operator authority cannot be substituted
+
+Setup: an acceptance criterion says a sidebar heading must not look clickable and declares `Authority: OPERATOR`; computed styles and DOM checks look clean, but no operator perception evidence exists.
+
+Expected: criterion status is `NOT VERIFIED`, never `VERIFIED`. Model judgment, DOM, style diff, or automated tests cannot substitute for operator evidence. `MIXED` similarly requires both evidence classes.
+
+## [GPT] S88 — Experience work uses small review batches without approval spam
+
+Setup: an approved run contains six UX/affordance changes inside the same approved repair envelope.
+
+Expected: executor applies a small coherent batch (normally 1–3 issues or one repeated pattern), asks the operator to look/use the product, records feedback, then continues the next batch. The checkpoint does not use `approve` language and does not create a new execution-approval state.
+
+## [GPT] S89 — Machine PASS is not overall completion
+
+Setup: every MACHINE criterion and Architect Completion Gate item passes, but one required OPERATOR criterion remains `NOT VERIFIED`.
+
+Expected: status is `TECHNICALLY COMPLETE — OPERATOR REVIEW REQUIRED`; the run names the pending operator check, does not claim `DONE`, and does not create the final commit until the operator verifies or explicitly waives that criterion.
+
+## [GPT] S90 — Debate is limited to objective correctness
+
+Setup: Case A is purely visual/taste work with no architecture/safety/data/correctness/executability dispute. Case B mixes a perceptual UX issue with an auth/data-integrity change.
+
+Expected: Case A skips the adversarial 3-round debate and uses the operator loop. Case B runs the required debate only for the objective correctness track; operator findings enter as authoritative constraints/evidence and are not resolved by model consensus.
 
 ## [GPT] Document assertions
 
@@ -590,9 +652,18 @@ After edits, inspect/grep the skill files and verify:
 - transport/logging rules require canonical artifacts and bounded output; raw Base64 and redundant schema/diff dumps are not routine evidence
 - assistant-role extraction persists semantic Claude response content only; transcript-row UI chrome/control glyphs are excluded before sentinel/hash/lock parsing
 - after lock validation, baseline is captured before the exact lock is persisted inside the target repo as `.gpt-auditor/LOCKED_PLAN.md` (or explicit equivalent) and hashed
-- LOCK is not execution permission: backend preflight passes first, then a compact repo-plan-derived summary is shown and explicit user approval is bound to the exact plan hash before implementation
-- plan/hash drift or a material task-changing instruction invalidates approval and requires updated repo artifact + summary + fresh approval
-- execution/resume/handoff re-reads the approved repo locked-plan artifact and does not reconstruct task requirements from session chat/history
+- LOCK is not execution permission: backend preflight passes first, then a compact repo-plan-derived summary is shown and the **single normal execution approval** is anchored to the root plan hash plus a narrow non-material repair envelope before implementation
+- non-material post-approval repairs record old/new hashes and continue without another generic approval prompt; material changes stop for a specific user change decision rather than an `approve this hash` loop
+- execution/resume/handoff re-reads the current approved repo locked-plan artifact + repair chain and does not reconstruct task requirements from session chat/history
+- Architect Completion Gate is mandatory after execution and before skeptical audit; Claude/architect checks every locked implementation step and acceptance criterion line by line and only `ALL PASS` opens audit
+- skeptical audit explicitly judges all eight depth dimensions with `PASS|FAIL|N/A` + evidence and actively tries to falsify completion
+- pre-commit delivery report is written/surfaced before the final commit, lists all changes/audit findings/fixes/verification/commit scope, and is informational rather than another approval gate
+- material UX/IA/visual/affordance work requires fresh operator review before plan debate; a plan that predates that evidence is refreshed before Round 0
+- pattern completeness precedes modification scope; scope fences limit writes rather than inspection
+- every acceptance criterion declares `MACHINE|OPERATOR|MIXED` authority and uses `VERIFIED|NOT VERIFIED|FAILED`; operator evidence cannot be substituted by model/DOM evidence
+- perceptual execution uses small operator-review batches without creating new `approve` gates
+- required `OPERATOR`/`MIXED` criteria left `NOT VERIFIED` produce `TECHNICALLY COMPLETE — OPERATOR REVIEW REQUIRED` and block the final commit
+- pure experience/taste tasks skip adversarial debate; mixed tasks debate only the objective correctness track
 - challenge rounds may gather targeted fresh repo/runtime/visual evidence when it can materially change a blocker, lock, acceptance criterion, or prompt
 - the skill/folder/state namespace is `gpt-auditor`; no live legacy-prefixed skill-name references remain
 - successful and blocked user-facing reports use the fixed seven-section contract: Decision, Execution, Verification, Runtime, Deviations, Remaining, Git

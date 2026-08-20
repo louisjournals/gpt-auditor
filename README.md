@@ -7,23 +7,35 @@ It starts from an **existing architect plan**, challenges that plan across multi
 ## Default workflow
 
 ```text
-Existing architect plan
+Initial audit / existing architect input
+        ↓
+Operator review first when UX/IA/affordance is material
+        ↓
+Pattern inventory before scope freeze
+        ↓
+Refreshed architect plan
         ↓
 Round 0 — import / synchronize the plan
         ↓
-GPT challenge #1 → Claude/Opus revision
+Objective-correctness challenge #1 → Claude/Opus revision
         ↓
-GPT challenge #2 → Claude/Opus revision
+Objective-correctness challenge #2 → Claude/Opus revision
         ↓
-GPT challenge #3 → Claude/Opus LOCK
+Objective-correctness challenge #3 → Claude/Opus LOCK
         ↓
 Persist `.gpt-auditor/LOCKED_PLAN.md` + hash
         ↓
-Short execution summary → USER APPROVAL
+Short execution summary → ONE USER APPROVAL
         ↓
 Selected executor re-reads approved repo plan
         ↓
-Execute → Verify → Independent audit → Fix → Regression
+Execute + evidence matrix
+        ↓
+Architect Completion Gate → ALL PASS
+        ↓
+Deep skeptical audit → Fix P0/P1 → Regression
+        ↓
+Pre-commit delivery report (informational)
         ↓
 One safe run-owned commit
         ↓
@@ -110,19 +122,26 @@ This is **evidence-on-demand**, not a mandatory full audit every round. Pre-lock
 ## Debate rules
 
 - The supplied plan is the Round-0 baseline.
-- At least **three challenge rounds** are required after invocation.
-- Rounds 4–5 are blocker-only; there is no Round 6.
+- At least **three challenge rounds** are required for the objective-correctness track. Pure taste/perception work is not forced through adversarial rounds.
+- Rounds 4–5 are blocker-only for unresolved objective blockers; there is no Round 6.
 - Claude/architect owns the final architecture lock in the default profile.
 - GPT may reject a valid lock only for evidence-backed correctness, safety, data-integrity, hard-constraint, or executability blockers — not preference.
-- Every lock includes explicit acceptance criteria and a done-means contract for runnable product work.
+- Every lock includes explicit acceptance criteria and a done-means contract for runnable product work. Each criterion declares `Authority: MACHINE`, `OPERATOR`, or `MIXED`; operator-authority criteria cannot be verified by model/DOM evidence alone.
+- Scope constrains what may be changed, not what may be inspected. A defect instance triggers a read-only sibling-pattern scan before modification scope is frozen.
 
 ## Delivery and verification
 
-LOCK freezes the architecture but does not authorize implementation. After lock validation, the auditor records the repo baseline, persists the exact plan to `.gpt-auditor/LOCKED_PLAN.md`, hashes it, verifies the selected backend, summarizes the upcoming work in a few bullets, and asks for explicit user approval bound to that exact hash.
+LOCK freezes the architecture but does not authorize implementation. After lock validation, the auditor records the repo baseline, persists the exact plan to `.gpt-auditor/LOCKED_PLAN.md`, hashes it, resolves any known pre-approval instability, verifies the selected backend, summarizes the upcoming work in a few bullets, and asks for the **one normal execution approval**. That approval is anchored to the displayed root hash plus a narrow non-material-repair envelope.
 
-Only after approval may the selected executor begin implementation. The executor re-reads the repo locked-plan artifact on start/resume/handoff and treats it—not remembered session chat—as the task-specific execution contract. Any material plan drift invalidates approval and requires a new persisted plan, summary, and approval. The orchestrator then verifies against artifacts rather than implementation intent.
+Only after approval may the selected executor begin implementation. The executor re-reads the current repo locked-plan artifact on start/resume/handoff and treats it—not remembered session chat—as the task-specific execution contract. Evidence-backed non-material repairs inside the approved envelope are recorded as a hash repair chain and do **not** trigger another generic `approve` prompt. A truly material change stops for a specific user change decision rather than approval spam.
 
-For runnable products, verification can include real user-flow/runtime checks in addition to build/test/lint/typecheck evidence. The skeptical audit explicitly looks for broken critical flows, shallow/stubbed functionality, fake integrations, data errors, UX failures, and regressions hidden by passing static checks.
+When perceptual UX/IA/affordance work is in scope, execution is intentionally iterative: make a small coherent batch, let the operator use/look at it, record `VERIFIED` / `NOT VERIFIED` / `FAILED`, then continue. These are review checkpoints, not repeated execution approvals. Passing every machine criterion does not mean the experience is accepted; outstanding operator-authority criteria produce `TECHNICALLY COMPLETE — OPERATOR REVIEW REQUIRED`, not `DONE`.
+
+When the executor believes the work is complete, it creates an evidence matrix for every locked implementation step and acceptance criterion and sends that matrix plus the current locked plan to the architect/lock owner. Skeptical audit cannot begin until the architect checks the items line by line and returns **ALL PASS**.
+
+The skeptical audit is intentionally deep: it actively tries to falsify completion across lock conformance, functional/runtime behavior, data/auth/permission integrity, regression risk, UX/IA/affordance quality when relevant, implementation depth/wiring, complete run-delta hygiene, and verification-evidence quality. For runnable products, real user-flow/runtime checks are preferred over relying on build/test/lint/typecheck alone. P0/P1 findings are fixed and regressed before delivery.
+
+Immediately before the single final commit, the user sees a concise informational report of **all run-owned changes, Architect Completion Gate result, audit findings, fixes, verification/deviations, remaining P2/known issues, and exact commit scope**. This is not another approval gate; the normal run still has one execution approval.
 
 A canonical run-delta manifest accounts for tracked edits, staged changes, new/untracked files, deletions/renames, and safely separable mixed-file changes.
 

@@ -170,6 +170,41 @@ Required capabilities are:
 
 If these postconditions cannot be satisfied, the Codex host is not compliant for this run.
 
+## [GPT] Post-execution Architect Completion Gate transport
+
+The mandatory Architect Completion Gate reuses the **same verified architect thread transport** but is not Challenge Round 4/5 and does not reopen debate.
+
+Use deterministic attempt sentinels:
+
+```text
+[[COMPLETION_CHECK attempt=N from=GPT]]
+...
+[[END COMPLETION_CHECK attempt=N]]
+```
+
+Claude/architect replies:
+
+```text
+[[COMPLETION_CHECK attempt=N from=CLAUDE]]
+VERDICT: ALL PASS
+- Implementation steps: <N/N PASS with evidence references>
+- Acceptance criteria: <N/N PASS with evidence references>
+[[END COMPLETION_CHECK attempt=N]]
+```
+
+or
+
+```text
+[[COMPLETION_CHECK attempt=N from=CLAUDE]]
+VERDICT: INCOMPLETE
+- <exact missing/unproven locked item + required evidence/action>
+[[END COMPLETION_CHECK attempt=N]]
+```
+
+Require the footer sentinel, non-streaming state, stable text across two bounded polls, correct assistant role, and the expected attempt number before consuming the result. Before sending an attempt, role-scan user messages for the same attempt sentinel so recovery cannot double-post. `ALL PASS` is valid only when the response checks every locked implementation step and acceptance criterion; a bare verdict without the line-by-line coverage/evidence result is malformed and gets a targeted completion-check format repair, not a debate round.
+
+If the architect requests targeted read-only evidence, gather only the requested evidence and continue the **same completion-check attempt or a clearly numbered retry**. No implementation write occurs inside Claude transport itself; missing execution work is returned to the selected executor.
+
 ## [GPT] Transport and evidence budget
 
 Keep transport/logging bounded without weakening recovery:

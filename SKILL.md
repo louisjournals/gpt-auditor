@@ -11,7 +11,9 @@ Use for explicit requests such as `use gpt-auditor`, `review this plan with Clau
 
 The normal workflow begins **after an architect has already framed the problem and produced a plan**. The user may paste that plan, attach `plan.md`, or otherwise provide it in the current context. If no usable architect plan is present, ask for it before touching Claude; do not silently generate a replacement plan.
 
-Skip automatic activation for routine copy changes, obvious one-file fixes, formatting, simple CSS, or other low-risk execution where architecture is already settled. Once explicitly invoked, however, keep the minimum-three-challenge protocol.
+For work that materially involves UX, information architecture, visual hierarchy, affordance, or subjective usability, the operator must enter the loop **before the plan is frozen**. If the supplied plan was produced without a fresh operator review of the current product, do not start debate yet: ask the operator to inspect the product normally, capture what they actually notice/try/misread, then obtain a refreshed architect plan that incorporates that evidence. AI disagreement cannot settle a perceptual question whose authority is the operator.
+
+Skip automatic activation for routine copy changes, obvious one-file fixes, formatting, simple CSS, or other low-risk execution where architecture is already settled. For a **pure experience/taste task with no objective correctness, safety, data, architecture, or executability dispute**, skip the multi-round adversarial debate and use the small-batch operator loop instead. For mixed tasks, debate only the objective correctness track; operator experience findings are constraints/evidence, not topics for AI preference debate.
 
 ## [GPT] Role architecture
 
@@ -48,9 +50,9 @@ Under the current default role profile, the bound Claude thread must be **Opus 5
 ## [GPT] Non-negotiable invariants
 
 1. The supplied architect plan is the debate baseline; Round 0 imports/anchors it and does not restart framing from scratch.
-2. Once invoked, complete **at least 3 challenge rounds** before execution.
-3. Rounds 4–5 are allowed only for unresolved evidence-backed blockers. There is no Round 6.
-4. Consensus means blocking disagreements are resolved; preferences may remain.
+2. For the **objective correctness track**, complete **at least 3 challenge rounds** before execution. Pure perceptual/experience work does not consume challenge rounds merely to debate taste.
+3. Rounds 4–5 are allowed only for unresolved evidence-backed objective blockers. There is no Round 6.
+4. Consensus means objective blocking disagreements are resolved. Operator-authority perceptual judgments are not settled by model consensus.
 5. Bind and control the exact remote debate thread. Claude browser transport is **background-first**: target the exact thread/URL with DOM-aware operations and do not steal foreground focus when equivalent background control exists. Never automate GPT's own composer in the default ChatGPT-host profile.
 6. Every debate message uses visible sentinels: `[[AUDITOR round=N from=X]]` … `[[END round=N]]`.
 7. Match sentinels by message role, never flat page text alone.
@@ -59,15 +61,21 @@ Under the current default role profile, the bound Claude thread must be **Opus 5
 10. Read an unread answer before any reload/recovery action.
 11. Redact secrets, credentials, tokens, keys, and private customer data before external model transport.
 12. No user-mediated transport fallback. Missing adapter capability is a named blocker.
-13. **LOCK is not execution permission.** After a valid lock, persist the exact locked plan inside the target repo, hash that repo artifact, summarize the upcoming execution compactly, and wait for explicit user approval bound to that exact hash before any implementation write.
-14. If the repo locked-plan artifact changes after approval, or a current user instruction would materially change its scope/steps/criteria, invalidate approval and require an updated lock artifact + summary + approval before continuing implementation.
-15. During execution, the repo locked-plan artifact is the task-specific execution authority; session chat/history is non-authoritative context. Re-read the repo artifact on executor handoff/resume and follow it rather than reconstructing requirements from conversation memory.
+13. **LOCK is not execution permission.** After a valid lock, persist the exact locked plan inside the target repo, hash it, resolve known pre-approval instability, summarize upcoming execution compactly, and wait for the **single normal execution approval** before any implementation write.
+14. That approval is anchored to the displayed root hash plus a narrow non-material repair envelope. Evidence-backed repairs inside that envelope update the current plan hash/repair chain without another generic approval prompt; a material change stops for a specific user change decision.
+15. During execution, the current approved repo locked-plan artifact + repair chain is the task-specific execution authority; session chat/history is non-authoritative context. Re-read it on executor handoff/resume rather than reconstructing requirements from conversation memory.
 16. Never silently switch execution backend after the user chooses one.
-17. Do not claim completion without fresh verification evidence.
-18. A new Claude session must have its concrete URL captured and exact requested title verified before debate proceeds beyond Round 0.
-19. In a git repo, successful execution ends with one final auto-commit containing only the run-owned delta unless the current user explicitly disables commit for that run; never auto-push and never include pre-existing unrelated user changes.
-20. Any change to `gpt-auditor/` itself is unreleasable until E2E-1 passes against the final post-fix files.
-21. During debate, fresh repo/runtime/visual inspection is allowed only as targeted read-only evidence gathering; no implementation fix may occur before LOCK.
+17. **Architect Completion Gate is mandatory before skeptical audit.** The executor must enumerate every locked implementation step and acceptance criterion with evidence, and the architect/lock owner must return `ALL PASS`; missing/unproven items go back to the executor until closed. The architect may not promote an operator-authority criterion to verified without recorded operator evidence.
+18. Skeptical audit must explicitly cover the eight defined audit dimensions, include a pattern-escape/sibling-instance check, and actively try to falsify completion; no clean-build shortcut.
+19. Do not claim completion without fresh verification evidence.
+20. A new Claude session must have its concrete URL captured and exact requested title verified before debate proceeds beyond Round 0.
+21. In a git repo, successful execution ends with one final auto-commit containing only the run-owned delta unless the current user explicitly disables commit for that run; immediately before that commit, surface the informational pre-commit delivery report (all changes, completion-gate result, audit findings, fixes, verification/deviations, exact commit scope). Do not ask for another approval and never auto-push or include pre-existing unrelated user changes.
+22. Any change to `gpt-auditor/` itself is unreleasable until E2E-1 passes against the final post-fix files.
+23. During debate, fresh repo/runtime/visual inspection is allowed only as targeted read-only evidence gathering; no implementation fix may occur before LOCK.
+24. **Scope limits changes, not observation.** When one defect instance is found, inspect the full relevant pattern/sibling surface before freezing modification scope; do not let a narrow fix scope hide repeated instances.
+25. Acceptance criteria must declare verification authority: `MACHINE`, `OPERATOR`, or `MIXED`. Operator-authority evidence cannot be substituted by DOM/style/test evidence. Use `VERIFIED`, `NOT VERIFIED`, or `FAILED`; never infer `VERIFIED`.
+26. For experience work, execute in small coherent batches (normally 1–3 perceptual issues or one repeated pattern), then ask the operator to look/use the product before the next batch. This is review/feedback, not another execution approval.
+27. Passing all machine criteria is not sufficient for completion when operator-authority criteria remain. Report `TECHNICALLY COMPLETE — OPERATOR REVIEW REQUIRED` until the operator verifies them.
 
 ## [GPT] Required files
 
@@ -100,11 +108,12 @@ Shared rules for either backend:
 - for medium/long-running work, persist only the state needed to execute, verify, recover, and hand off truthfully;
 - every app/website/feature lock must have an executable done-means contract: expected behavior, critical user flows, validation methods/commands, expected results, and explicit out-of-scope boundaries;
 - no silent dependency or architecture expansion outside the lock; escalate when it changes a locked assumption/hard constraint;
+- pattern completeness precedes modification scope: one observed defect instance triggers read-only inspection of sibling instances/components/pages before deciding what to change; scope fences constrain writes, never where the auditor is allowed to look;
 - a clean build is evidence, not proof of product correctness; validate runnable critical flows as a user when reasonably possible;
 - normalize mechanically knowable protocol conflicts before Round 0 so stale inherited instructions do not waste a challenge round; current explicit user instructions remain authoritative;
 - every skeptical audit/scope/prohibited-path gate must use a complete canonical run-delta manifest that includes tracked changes, new/untracked files, and deletions; plain `git diff` is insufficient;
 - final verification distinguishes current runtime liveness from durability/lease/supervisor semantics, records `Execution deviations` (`NONE` when applicable), and never calls something `pre-existing` without baseline evidence;
-- lock validation checks both testability and objective semantic correctness of expected results; obvious defects get a targeted repair, not a new debate round;
+- lock validation checks both testability and objective semantic correctness of expected results; every acceptance criterion declares `Authority: MACHINE|OPERATOR|MIXED`; obvious defects get a targeted repair, not a new debate round;
 - keep transport/log output bounded: one canonical plan/context artifact, targeted reads/diffs, no routine raw Base64 dumps, and no redundant capability/schema rediscovery when nothing changed.
 
 ## [GPT] Codex execution profile
@@ -155,12 +164,14 @@ A valid LOCK freezes architecture but does **not** authorize implementation. Bef
 2. persist the exact validated lock to `.gpt-auditor/LOCKED_PLAN.md` (or the explicitly selected equivalent repo path) and record its SHA-256 in run state;
 3. complete the chosen backend capability preflight without implementation writes; never silently fall back to the other backend;
 4. re-read the repo locked-plan artifact and give the user a compact 3–8 bullet execution summary covering what will change, material out-of-scope boundaries, the selected execution path in generic capability terms, and any approval-sensitive/destructive actions; do not expose private/local-only tool names in public-facing summaries;
-5. ask for explicit execution approval bound to the displayed locked-plan hash;
-6. only after approval, re-read and re-hash the repo artifact, confirm it still matches the approved hash, then begin implementation.
+5. ask for the **single normal execution approval**, anchored to the displayed root lock hash plus the narrow non-material repair envelope;
+6. only after approval, re-read and re-hash the repo artifact, confirm it still matches both the approved root/current hash, then begin implementation.
 
-During execution, use the repo locked-plan artifact as the task-specific authority rather than session chat/history. On executor handoff, context restart, or resume, re-read that artifact before continuing. A material lock change or new user instruction that changes scope/steps/criteria invalidates prior approval; persist the revised lock, re-summarize, and obtain fresh approval before further implementation writes.
+During execution, use the repo locked-plan artifact as the task-specific authority rather than session chat/history. On executor handoff, context restart, or resume, re-read that artifact before continuing. The normal run has **one execution-approval prompt only**. That approval is anchored to the displayed root lock hash plus a narrow non-material-repair envelope. An evidence-backed post-approval repair may continue without another approval only when it preserves the user goal/product direction, does not add permissions/OAuth scopes/destructive actions or broaden external side effects, does not switch executor, and does not weaken the locked acceptance burden; record the old/new hashes and repair evidence. A material change outside that envelope stops for a specific user change decision instead of repeatedly asking `approve`.
 
-After approval, execute in bounded increments, verify meaningful changes, run an artifact-only skeptical audit, fix P0/P1 findings, rerun targeted regression plus every locked criterion, then create one final run-owned commit when safe. Routine implementation problems stay in delivery; re-enter the architect only when new evidence invalidates a locked architectural assumption or satisfying the lock would violate a hard constraint.
+After the executor believes the locked plan is complete, it must build an evidence-backed completion matrix covering **every implementation step and every acceptance criterion**, then send the current repo locked plan plus that matrix to the architect/lock owner for a line-by-line **Architect Completion Gate**. The architect returns `ALL PASS` only when every item is executed/proven; otherwise it returns the exact missing/unproven items. The executor closes those gaps and repeats this gate. **Skeptical audit may not start until the architect returns `ALL PASS`.**
+
+Then run a deep artifact/runtime skeptical audit that actively tries to falsify completion across lock conformance, functional/runtime behavior, data/auth/security integrity, regression risk, UX/IA/affordance quality when relevant, implementation depth/wiring, complete run-delta scope, and verification-evidence quality. Fix P0/P1 findings, rerun targeted regression plus every locked criterion, and prepare a concise **pre-commit delivery report** for the user listing all run-owned changes, architect-completion result, audit findings, fixes, verification/deviations, and exact commit scope. This report is informational, **not another approval gate**. Then create one final run-owned commit when safe. Routine implementation problems stay in delivery; re-enter the architect only when new evidence invalidates a locked architectural assumption or satisfying the lock would violate a hard constraint.
 
 When the target being modified is `gpt-auditor` itself, final files must pass E2E-1 before release/commit unless the current user explicitly directs an immediate commit/release despite that project-local gate.
 

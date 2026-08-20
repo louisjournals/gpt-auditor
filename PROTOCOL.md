@@ -17,7 +17,7 @@ Minimum state fields:
   "run_id": "...",
   "workspace": "...",
   "owner_host": "orchestrator_host|codex|other",
-  "phase": "startup_choice|preflight|context|debate|locked|repo_lock_persisted|backend_preflight|awaiting_execution_approval|executing|verifying|auditing|fixing|regression|release_verifying|committing|done|blocked",
+  "phase": "startup_choice|preflight|context|debate|locked|repo_lock_persisted|backend_preflight|awaiting_execution_approval|executing|architect_completion_check|auditing|fixing|regression|precommit_reporting|release_verifying|committing|done|blocked",
   "round": 1,
   "turn_state": "awaiting_startup_choices|ready_to_challenge|challenge_sent|claude_complete|response_processed|lock_pending|awaiting_execution_approval",
   "role_profile": "default_claude_architect_gpt_challenger|custom",
@@ -51,14 +51,20 @@ Minimum state fields:
   "locked_plan_path": "...",
   "repo_locked_plan_path": ".gpt-auditor/LOCKED_PLAN.md",
   "repo_locked_plan_hash": "sha256:...",
-  "execution_approval": {"status": "not_requested|awaiting|approved|invalidated", "approved_plan_hash": null, "approved_at": null, "evidence": null},
+  "execution_approval": {"status": "not_requested|awaiting|approved|change_decision_required", "approval_root_hash": null, "current_plan_hash": null, "repair_envelope": null, "repair_chain": [], "approved_at": null, "evidence": null},
+  "task_tracks": {"objective_correctness": true, "operator_experience": false},
+  "operator_review": {"preplan_status": "not_applicable|missing|required|complete", "evidence_path": null, "pending_criteria": []},
+  "pattern_inventory_path": null,
   "baseline": {"head_sha": null, "dirty_paths": [], "snapshot_manifest": [], "evidence": {}},
   "declared_scope": [],
   "scope_extensions": [],
   "touched_paths": [],
   "run_delta_manifest_path": "...",
+  "execution_completion_path": "...",
+  "architect_completion_gate": {"status": "not_started|incomplete|passed", "attempt": 0, "checked_plan_hash": null, "missing_items": [], "evidence": null},
   "execution_deviations": [],
   "runtime_assets": [],
+  "precommit_report_path": "...",
   "final_verification_path": "...",
   "self_release_gate": {"required": false, "e2e_status": "not_required|pending|passed|failed"},
   "final_commit_sha": null,
@@ -81,6 +87,25 @@ Before debate transport:
 
 If no usable plan exists, ask the user to provide it. Do not synthesize a replacement plan and do not touch Claude. Round 0 is an import/anchor step, not a second framing/planning pass.
 
+## [GPT] Problem-domain split and operator calibration
+
+Before debate, classify the task into two independent tracks:
+
+- **Objective correctness** — architecture, safety, security, data integrity, auth/permissions, logic, contracts, migrations, runtime correctness, regression, executability. This track may use the adversarial multi-round protocol.
+- **Operator experience** — perceived affordance, visual hierarchy, information architecture clarity, taste, usability, whether something *looks* clickable/important/confusing, and similar human perception. Model consensus is not authoritative for this track.
+
+For any material operator-experience track, require fresh operator evidence **before the architect plan is treated as ready for debate**. The operator should inspect/use the current product normally and record what they notice, try to click, misunderstand, or dislike without being constrained to the existing acceptance-criteria list. Persist that evidence externally and set `operator_review.preplan_status=complete`.
+
+If a supplied UX/IA/visual/affordance plan predates that review, do not spend challenge rounds polishing it. Stop before Claude debate, obtain the operator review, then require a refreshed architect plan that incorporates the findings. This preserves the intended order: initial audit → operator review → pattern inventory → plan.
+
+If the task is purely operator-experience work with no objective correctness/safety/data/architecture/executability dispute, skip the adversarial debate entirely and use the small-batch operator loop. If mixed, debate only the objective track; operator findings enter Round 0 as authoritative constraints/evidence and are not preference questions for the models to resolve.
+
+## [GPT] Pattern completeness before scope freeze
+
+**Scope fences constrain writes, not observation.** Before freezing modification scope around any discovered defect instance, inspect the relevant sibling pattern across the product/repo: shared component usages, same visual treatment, same route family, same state machine, same account-dependent surface, or other directly analogous instances. Persist a concise `pattern_inventory.md` externally and set `pattern_inventory_path`.
+
+A finding on one page must not become a one-page plan merely because that page was the first observed instance. The inventory may conclude that only one instance should be changed, but that decision comes **after** the pattern scan and must state why. Pattern discovery is read-only unless/until the refreshed plan includes additional changes.
+
 ## [GPT] Pre-debate protocol normalization
 
 Before Round 0, compare the supplied plan against **current explicit user instructions**, current repo facts, and active auditor invariants. Resolve mechanically knowable protocol contradictions before spending a challenge round on them.
@@ -97,7 +122,7 @@ Authority order:
 
 A current explicit user instruction such as `do not commit` overrides the auditor's default final auto-commit. In contrast, stale/inherited `no commit` text in a pasted plan does **not** silently disable the active delivery protocol when the user did not request that override. Surface the normalized execution contract in Round 0 so the architect cannot later lock an already-known protocol contradiction.
 
-Normalization may resolve procedural contradictions, not architecture disagreements. Architecture/product choices remain for the three-round debate.
+Normalization may resolve procedural contradictions, not architecture disagreements. Objective architecture/product choices remain for the correctness-track debate. Operator-authority perceptual judgments remain operator evidence and are not resolved by model voting.
 
 ## [GPT] Startup-choice gate
 
@@ -141,7 +166,7 @@ Persist the evidence needed to resume without chat memory:
 - after processing any nonterminal response that establishes/restates the current plan (Round 0, 1, 2, and blocker-resolution Round 4 when used), save the latest full current plan to `current_plan.md` and update `current_plan_path` before writing `response_processed`;
 - after a valid lock, save the exact `=== LOCKED PLAN ===` block to external `locked_plan.md`, set `locked_plan_path`, and only then set `phase=locked`;
 - before any repo write, record the implementation baseline; then persist the exact validated lock into the repo as `.gpt-auditor/LOCKED_PLAN.md` (or an explicitly user-selected equivalent), record `repo_locked_plan_path` + SHA-256, and set `phase=repo_lock_persisted`;
-- persist execution approval separately from debate state; approval is valid only for the exact recorded repo locked-plan hash.
+- persist execution approval separately from debate state; the one normal approval is anchored to `approval_root_hash` plus the explicit non-material repair envelope, while `current_plan_hash` and any repair chain remain durable execution evidence.
 
 A hash without the corresponding stored recovery artifact is insufficient for deterministic resume or continuation-thread rehydration.
 
@@ -171,10 +196,11 @@ Required sections:
 4. Normalized execution protocol — only material current-user/auditor/repo constraints that the lock must not contradict
 5. Repo/stack facts
 6. Relevant evidence — files/diff/errors/screenshots/data as warranted
-7. Prior attempts and results
-8. Hard constraints
-9. Explicit non-goals
-10. Unknowns
+7. Operator-review evidence and pattern inventory when the experience track is material
+8. Prior attempts and results
+9. Hard constraints
+10. Explicit non-goals
+11. Unknowns
 11. Draft acceptance criteria
 12. Debate contract — minimum 3 challenge rounds, blocker-only R4/R5, sentinel format, lock schema
 
@@ -334,7 +360,7 @@ LOCK
 or
 BLOCKERS REMAIN
 
-If LOCK, output the complete nine-field `=== LOCKED PLAN ===` now.
+If LOCK, output the complete nine-field `=== LOCKED PLAN ===` now. Every acceptance criterion must include `Authority: MACHINE|OPERATOR|MIXED`, a verification method appropriate to that authority, and an expected result.
 If blockers remain, list only blockers that threaten correctness, safety, data integrity, a hard requirement, or executability, with evidence and what would resolve each one.
 [[END round=3]]
 ```
@@ -395,8 +421,11 @@ Approval-sensitive / destructive actions
 
 Every acceptance criterion must state:
 
-- a verification method appropriate to the task: automated check, artifact/data invariant, structural/IA observation, or manual observation with a stated procedure; and
+- `Authority: MACHINE`, `Authority: OPERATOR`, or `Authority: MIXED`;
+- a verification method appropriate to that authority: automated check, artifact/data invariant, runtime interaction, or operator observation with a stated procedure; and
 - the expected result.
+
+Criterion status is exactly `VERIFIED`, `NOT VERIFIED`, or `FAILED`. `OPERATOR` criteria require explicit operator evidence to become `VERIFIED`; DOM/computed-style/tests/model judgment cannot substitute. `MIXED` requires both machine and operator evidence. Never infer `VERIFIED` from absence of failure.
 
 For app/website/feature delivery, the lock as a whole must also provide an executable **done-means contract** covering the expected behavior, critical user flows, validation methods/commands, and explicit out-of-scope boundaries. Do not force implementation details into the contract; it defines what must be true, not how to code it. If a critical flow cannot be tested from the lock, request targeted lock repair before execution.
 
@@ -440,19 +469,21 @@ After the external `locked_plan.md` is valid:
 2. **Persist the execution contract in the repo.** Write the exact validated `=== LOCKED PLAN ===` block to `.gpt-auditor/LOCKED_PLAN.md` by default. Use another repo-relative path only when the user explicitly selects one or an established project convention requires an equivalent path. Never overwrite a pre-existing unrelated file silently.
 3. **Hash the exact repo artifact.** Compute SHA-256 over the stored bytes and persist `repo_locked_plan_path` + `repo_locked_plan_hash`. Re-read the file after writing; do not trust the write call alone.
 4. **Backend preflight before asking approval.** Verify the selected executor can operate on the workspace without making implementation writes. If capabilities are missing, block instead of asking the user to approve an impossible execution.
-5. **Summarize from the repo artifact, not chat memory.** Re-read `.gpt-auditor/LOCKED_PLAN.md` and present a compact 3–8 bullet summary of what will be executed. Include material out-of-scope boundaries, the selected execution path in generic capability terms, and any `Approval-sensitive / destructive actions`. Do not re-dump the full plan or expose private/local-only tool names.
-6. **Ask for explicit execution approval.** State the repo path and a short form of the SHA-256. Set `phase=awaiting_execution_approval`, `turn_state=awaiting_execution_approval`, and `execution_approval.status=awaiting`. LOCK itself is not approval.
-7. **Bind approval to the exact hash.** On an explicit `approve`, `approved`, `proceed`, or unambiguous equivalent responding to this gate, persist `approved_plan_hash`, approval evidence, and timestamp. Before the first implementation write, re-read/re-hash the repo plan and require exact equality with `approved_plan_hash`.
-8. **Invalidate on drift.** If the repo plan changes after approval, or a new explicit user instruction materially changes scope, implementation steps, acceptance criteria, out-of-scope boundaries, or destructive actions, set `execution_approval.status=invalidated`. Reconcile the lock through targeted repair/Architecture Escalation as appropriate, rewrite/re-hash the repo artifact, re-summarize, and obtain fresh approval before further implementation writes.
-9. **Chat is non-authoritative during execution.** For task requirements, the approved repo locked-plan artifact outranks remembered debate/session content. Current user messages may pause/cancel work immediately; a task-changing instruction does not silently mutate the contract and instead triggers the invalidation rule above.
-10. **Resume from artifact.** Every executor handoff, fresh context, or resumed run must re-read the repo locked-plan artifact and verify its hash before continuing implementation.
+5. **Resolve known lock instability before asking approval.** Use the preflight and currently available repo/runtime evidence to settle observable baseline/invariant contradictions before presenting the approval gate. Do not ask the user to approve while a known lock repair is still pending.
+6. **Summarize from the repo artifact, not chat memory.** Re-read `.gpt-auditor/LOCKED_PLAN.md` and present a compact 3–8 bullet summary of what will be executed. Include material out-of-scope boundaries, the selected execution path in generic capability terms, and any `Approval-sensitive / destructive actions`. Do not re-dump the full plan or expose private/local-only tool names.
+7. **Ask for the one normal execution approval.** State the repo path and SHA-256. Set `phase=awaiting_execution_approval`, `turn_state=awaiting_execution_approval`, and `execution_approval.status=awaiting`. LOCK itself and startup backend selection are not approval. A normal run must not repeatedly ask the user to type `approve` after this gate.
+8. **Bind approval to a root hash plus a narrow repair envelope.** On an explicit `approve`, `approved`, `proceed`, or unambiguous equivalent responding to this gate, persist `approval_root_hash`, `current_plan_hash`, approval evidence, timestamp, and the repair envelope. Before the first implementation write, re-read/re-hash the repo plan and require exact equality with both recorded hashes.
+9. **Permit only non-material post-approval repairs without another approval prompt.** An architect lock repair may update `current_plan_hash` and append `{old_hash,new_hash,reason,evidence}` to `repair_chain` without another user approval only when the auditor and architect both verify that it: preserves the user goal and product direction; does not add permissions/OAuth scopes, destructive or approval-sensitive actions, production/data mutation blast radius, or a different executor; does not introduce a new architectural dependency/system; and does not weaken the locked acceptance burden. Re-persist/re-hash the repo lock and continue under the existing approval. Do not show another generic approval prompt for such repairs.
+10. **Material changes require a specific change decision, not approval spam.** If a proposed repair falls outside the envelope, or the user materially changes goal/scope/permissions/destructive actions, set `execution_approval.status=change_decision_required` and stop affected work. Ask one concrete decision describing exactly what changed and why. Do not present another generic `approve this hash` loop. If the user authorizes the change, record that decision and establish the revised execution contract before continuing.
+11. **Chat is non-authoritative during execution.** For task requirements, the current approved repo locked-plan artifact plus recorded repair chain outranks remembered debate/session content. Current user messages may pause/cancel work immediately; a task-changing instruction follows the change-decision rule above rather than silently mutating execution.
+12. **Resume from artifact.** Every executor handoff, fresh context, or resumed run must re-read the repo locked-plan artifact, verify `current_plan_hash`, and load any recorded repair chain before continuing implementation.
 
 Execution-stage authority is therefore:
 
 1. system/host safety constraints;
-2. current explicit user control instructions (`stop`, `pause`, `cancel`, or a task-changing instruction that invalidates approval);
-3. the exact **approved repo locked-plan artifact**;
-4. current repo facts/harness evidence that do not contradict the lock;
+2. current explicit user control instructions (`stop`, `pause`, `cancel`, or a task-changing instruction that triggers the material-change decision rule);
+3. the current **approved repo locked-plan artifact** plus its recorded approval/repair chain;
+4. current repo facts/harness evidence that do not contradict that execution contract;
 5. session chat/history and stale inherited guidance as non-authoritative context.
 
 ## [GPT] BLOCKED terminal
@@ -531,14 +562,15 @@ Do **not** retain redundant ceremony that conflicts with this auditor: no mandat
 1. Record baseline **before writing the repo locked-plan artifact**.
 2. Persist and hash the exact validated lock in the repo at `.gpt-auditor/LOCKED_PLAN.md` (or the explicitly selected equivalent path).
 3. Complete selected-backend preflight without implementation writes; never use an unverified or different backend.
-4. Re-read the repo artifact, summarize the upcoming execution compactly, and obtain explicit user approval bound to its exact hash.
-5. Immediately before the first implementation write, re-read/re-hash the repo plan and require it to match the approved hash.
+4. Resolve any known lock-readiness/baseline contradiction, then re-read the repo artifact, summarize the upcoming execution compactly, and obtain the **single normal user execution approval** anchored to the root hash plus the non-material repair envelope.
+5. Immediately before the first implementation write, re-read/re-hash the repo plan and require it to match the approved root/current hash.
 6. Prepare only the load-bearing execution-harness context/artifacts required by the selected profile, using the repo plan as the task contract.
-7. Execute the approved repo locked plan in bounded increments. On handoff/resume, re-read and hash-check it before continuing.
+7. Execute the approved repo locked plan in bounded increments. On handoff/resume, re-read `current_plan_hash` and the repair chain before continuing.
 8. Verify meaningful increments with targeted evidence and the backend's actual build/test/runtime paths.
 9. Solve routine implementation problems locally; for bugs, reproduce/root-cause before fix when applicable.
 10. Do not reopen debate for type errors, CSS, ordinary test fixes, package details, or implementation choices that remain inside the lock.
-11. Re-enter the architect only through Architecture Escalation when new evidence proves a locked architectural assumption false, a required capability absent in a way that invalidates the design, a fundamental data-model incompatibility present, or satisfying the lock would violate a hard constraint. Any revised lock must replace/re-hash the repo artifact and receive fresh user approval before further implementation writes.
+11. If new evidence requires a lock correction, classify it against the approved repair envelope. Non-material repair follows the recorded repair-chain path without another approval prompt; a material change stops for a specific user change decision.
+12. When the executor believes execution is complete, build the Architect Completion Gate artifact and do not begin skeptical audit until the architect returns `ALL PASS`.
 
 ## [GPT] Scope discipline, baseline evidence, and canonical run delta
 
@@ -583,49 +615,104 @@ Minimum decision needed: ...
 
 Send this to the recorded architect/lock owner using the run's verified debate transport. This is a bounded correction, not a restart of the 3–5 round debate.
 
+## [GPT] Operator experience loop
+
+When execution includes material UX/IA/visual/affordance work, do not hide it inside one giant implementation batch. Use a **small coherent batch** — normally 1–3 perceptual issues or one repeated pattern — then pause further experience changes and ask the operator to inspect/use the product. This is a review/feedback checkpoint, **not another execution approval** and must not use `approve` language.
+
+Record operator feedback as evidence and update affected `OPERATOR`/`MIXED` criteria to `VERIFIED`, `NOT VERIFIED`, or `FAILED`. If feedback requests another change that stays inside the approved repair envelope, continue the next small batch without a new generic approval. If it is a material contract change, use the specific change-decision path.
+
+Passing every machine check does not end the run while operator-authority criteria remain `NOT VERIFIED`. The truthful state is `TECHNICALLY COMPLETE — OPERATOR REVIEW REQUIRED`; do not claim `DONE` or create the final commit until required operator review is complete, unless the current user explicitly waives that operator criterion.
+
+## [GPT] Architect Completion Gate — mandatory before audit
+
+When the executor believes the locked work is finished, set `phase=architect_completion_check`. This gate exists to catch **omitted locked work before skeptical audit begins**; it is not another architecture debate and not a second user approval.
+
+1. Re-read the current repo locked-plan artifact and verify `current_plan_hash` plus any recorded repair chain.
+2. Write `execution_completion.md` in the external run-state directory and set `execution_completion_path`. It must enumerate **every locked Implementation step and every Acceptance criterion** one by one, each with `DONE|MISSING|NOT_PROVEN|N/A`, concise evidence references, relevant changed paths, commands/runtime checks, and any deviation. `N/A` requires a lock-supported reason.
+3. Build/update the canonical run-delta manifest so the architect sees the complete run-owned path set.
+4. Send the architect/lock owner a bounded packet containing the exact current `=== LOCKED PLAN ===` block, the completion matrix, canonical changed-path summary, and only the evidence needed to judge coverage. Do not send implementation rationale as proof.
+5. The architect must check every implementation step and acceptance criterion line by line. An executor assertion alone is not proof: each `PASS` needs an evidence reference or directly inspected read-only evidence. The architect may request targeted read-only repo/runtime evidence when needed.
+6. The architect returns only `ALL PASS` or `INCOMPLETE`. `INCOMPLETE` must list the exact missing/unproven step/criterion identifiers and the evidence/action needed to close each one.
+7. On `INCOMPLETE`, set `architect_completion_gate.status=incomplete`; return the exact gaps to the same executor, complete them within the current execution contract, refresh the matrix, and repeat this gate. Do not start skeptical audit.
+8. Only on `ALL PASS` set `architect_completion_gate.status=passed` with the checked plan hash/evidence, then enter skeptical audit.
+
+Architect Completion Gate is a **coverage/completeness gate**, not the skeptical audit. `ALL PASS` means the locked work appears fully executed and evidenced; it does not mean the implementation is defect-free. For `OPERATOR` or `MIXED` acceptance criteria, Claude may mark the item complete only when the completion matrix includes explicit operator evidence; it must return `INCOMPLETE`/`NOT VERIFIED` rather than substituting its own perception.
+
+### [CLAUDE-via-paste] Architect completion check template
+
+```text
+ARCHITECT COMPLETION CHECK — no architecture redesign
+
+Current locked plan:
+<exact repo LOCKED_PLAN block>
+
+Executor completion matrix:
+<every implementation step + acceptance criterion with status/evidence>
+
+Canonical run-owned paths:
+<complete manifest summary>
+
+Check every locked implementation step and acceptance criterion one by one. Do not infer completion from the executor's claim alone; require evidence.
+
+Return exactly one verdict:
+ALL PASS
+or
+INCOMPLETE
+- <exact missing/unproven item + required evidence/action>
+```
+
 ## [GPT] Audit and finish
 
 Audit against artifacts, not implementation intent:
 
-- original user goal
-- **approved repo locked-plan artifact / done-means contract** and its approved hash
-- run-specific delta
-- fresh test/verification evidence
-- relevant existing project-harness state when present
+- original user goal;
+- **current approved repo locked-plan artifact / done-means contract**, root approval hash, current plan hash, and repair chain;
+- `execution_completion.md` plus the architect's `ALL PASS` completion-gate result;
+- complete canonical run-specific delta;
+- fresh test/runtime/verification evidence;
+- relevant existing project-harness state when present.
 
-The orchestrator/auditor owns this pass independently from the executor. If Claude Code executed, GPT audit provides cross-model separation under the default profile. If Codex executed, use a fresh GPT audit context when the host supports it cheaply; otherwise explicitly ignore remembered implementation rationale unless backed by artifacts.
+The orchestrator/auditor owns this pass independently from the executor. Use a fresh audit context when the host supports it cheaply; otherwise explicitly ignore remembered implementation rationale unless backed by artifacts. The audit's job is to **try to falsify “done”**, not to confirm the executor's story.
 
-For runnable apps/websites, verify the product as a user when reasonably possible rather than stopping at static code/build success. Use the strongest available runtime evidence: browser/simulator/Playwright/MCP interaction, screenshots where useful, console/runtime logs, network/API checks, database/data invariants, and end-to-end critical flows.
+Every skeptical audit must explicitly consider all eight dimensions below and mark each `PASS|FAIL|N/A`; `N/A` requires a reason. Depth is risk-proportional inside each dimension, but none may be silently skipped:
 
-The skeptical audit must actively check, where relevant:
+1. **Lock conformance & coverage** — the delivered behavior and run-owned changes match the current approved lock/repair chain; no locked requirement was reinterpreted or quietly dropped despite the Architect Completion Gate.
+2. **Functional & runtime correctness** — critical user flows, success/failure states, edge cases, real interactions, and actual runtime behavior work. For runnable products, exercise the product as a user when reasonably possible; build/tests alone are insufficient.
+3. **Data, auth, permissions & side-effect integrity** — data invariants, migrations, authorization boundaries, OAuth/scopes/permissions, external writes, background workers, retries/idempotency, and destructive-action limits are correct when relevant. Verify that unrelated production/business data was not mutated.
+4. **Regression & neighboring-flow risk** — adjacent flows, shared components/contracts, responsive states, error paths, backward compatibility, and relevant pre-existing tests still behave correctly.
+5. **UX / IA / affordance / visual correctness** — when UI is in scope, check information hierarchy, labels, navigation, discoverability, false affordances, responsive behavior, empty/error/loading states, and visual quality against the locked direction. User/operator perception of affordance is valid evidence; computed styles alone cannot overrule an observed false affordance.
+6. **Implementation depth & wiring** — look for stubs, TODOs, dead paths, fake/display-only integrations, placeholder success states, mocks leaking into production behavior, disconnected UI, incomplete error handling, and shallow implementation that merely looks finished. AI/integration features must drive real promised behavior rather than a demo surface.
+7. **Scope, delta & pattern completeness** — every run-owned path in the canonical manifest is reviewed; no undeclared/unrelated change, accidental generated file, secret/private path, mixed dirty-file sweep, or out-of-scope side effect is hidden. Re-run a **pattern-escape check** for each material defect/fix: inspect sibling instances/components/routes/states to ensure the plan did not fix only the first observed instance while the same defect remains elsewhere. Observation may exceed modification scope.
+8. **Verification quality & authority** — each acceptance criterion is supported by evidence that actually proves it; tests are meaningful rather than tautological, runtime evidence is current, baseline claims are qualified, and green build/unit tests cannot override a directly observed broken core flow. Verify that `OPERATOR`/`MIXED` criteria have actual operator evidence rather than model/DOM substitution.
 
-- product depth and whether the promised user outcome actually exists;
-- functional correctness of critical flows;
-- UX clarity and information hierarchy;
-- visual/design quality only against the locked product direction, not reviewer taste;
-- code/data correctness and regression risk;
-- completeness vs stubs, fake integrations, display-only features, placeholder success states, or polished UI hiding broken behavior;
-- AI features: whether the model/integration drives real product behavior/actions where promised rather than a fake chat surface or disconnected demo.
+Use the strongest available evidence appropriate to the task: browser/simulator/Playwright/MCP interaction, screenshots where useful, console/runtime logs, network/API traces, database/data invariants, background-job state, static/code inspection, tests, typecheck/lint/build, and end-to-end critical flows. Do not perform risky production mutations merely to make an audit deeper.
 
-A clean build or passing unit tests cannot overrule a directly observed broken core flow. Treat a stubbed/fake/display-only core requirement as P0/P1 according to delivery impact.
+Severity:
 
-Output only:
+- **P0 — blocker:** safety/data-integrity/security/destructive-action violation, unapproved material scope/permission change, missing core promised outcome, or another defect that makes delivery unsafe/invalid.
+- **P1 — must-fix:** locked acceptance criterion unmet, critical/important flow broken, substantial regression, misleading/fake core behavior, or high-impact UX/implementation defect that prevents credible completion.
+- **P2 — optional:** non-blocking maintainability, polish, resilience, or improvement that is outside the minimum locked done-means contract.
+
+Output:
 
 ```text
 P0 — blockers
 P1 — must-fix
 P2 — optional
+Audit dimensions — 1..8 PASS|FAIL|N/A + concise evidence
 Acceptance criteria status
 Regression risks
 ```
 
-Fix P0/P1 only unless the user approves optional work. Then rerun targeted checks plus every locked acceptance criterion. Do not run another broad audit without new evidence.
+Fix P0/P1 only unless the user separately requests optional work. Then rerun targeted checks plus every locked acceptance criterion. Do not run another broad audit without new evidence.
 
 After regression passes, write `final_verification.md` in the external run-state directory, set `final_verification_path`, and include concise evidence for:
 
 - concrete `execution_environment`;
-- approved repo locked-plan path/hash and confirmation that execution used that artifact without unapproved drift;
+- approved repo locked-plan root hash, current plan hash, any non-material repair chain, and confirmation that execution stayed inside the approved repair envelope;
+- Architect Completion Gate result and checked plan hash;
 - acceptance criteria status;
+- all eight skeptical-audit dimension statuses and remaining P0/P1/P2 counts;
 - canonical run-delta coverage (all run-owned paths reviewed);
 - regression checks;
 - **Execution deviations** — literal `NONE` or each departure from the locked operational expectation with reason, effect, and whether architecture/criteria remain valid;
@@ -638,13 +725,27 @@ A sensitive/destructive action outside the lock's enumerated field is P0.
 
 If the locked scope includes persistent project-harness files, update them only after the implementation/audit state is known: task/phase status from observed completion, QA findings from the actual audit, bugs from reproduced failures, decisions from actual locked decisions, and `HANDOFF.md` from the real continuation state. Do not create ceremonial entries or mark work complete before verification.
 
+## [GPT] Pre-commit delivery report — visible, not an approval gate
+
+Before the one final commit, set `phase=precommit_reporting`, write `precommit_report.md` in external run state, set `precommit_report_path`, and surface the same concise report to the user. It must contain:
+
+- **All changes made** — every run-owned path in the final canonical manifest, each with a one-line factual description;
+- **Architect Completion Gate** — `ALL PASS`, checked current plan hash, and any gap/fix cycles completed before audit;
+- **Audit findings** — every P0/P1/P2 found, grouped by severity and audit dimension; literal `NONE` for an empty severity;
+- **Fixes applied** — what changed to close each P0/P1, with verification evidence;
+- **Verification/regression** — locked acceptance-criteria result, meaningful tests/build/runtime QA, and audit-dimension result;
+- **Deviations / remaining** — execution deviations plus unresolved P2/known issues;
+- **Commit scope** — exact safely stageable run-owned paths and intended commit message.
+
+This report is **informational, not another approval prompt or wait state**. The earlier execution approval already authorizes the normal final run-owned commit. After surfacing the report, continue to commit in the same run unless the user has already said `stop`, `cancel`, or `do not commit`, or a real blocker appears. Never ask `approve` again merely because the run reached commit.
+
 ## [GPT] Final auto-commit
 
-When the target workspace is a git repository, successful completion includes **one final commit** after execution, audit, required fixes, regression checks, and every locked acceptance criterion pass **unless the current user explicitly disabled commit for this run**. A stale `no commit` inside an inherited plan is not such an override.
+When the target workspace is a git repository, successful completion includes **one final commit** only after execution, required operator-review checkpoints, Architect Completion Gate `ALL PASS`, skeptical audit, required P0/P1 fixes, regression checks, every locked acceptance criterion is `VERIFIED` (or explicitly waived by the current user), and the visible pre-commit delivery report **unless the current user explicitly disabled commit for this run**. A stale `no commit` inside an inherited plan is not such an override.
 
 Rules:
 
-- set `phase=committing` only after verification is complete;
+- set `phase=committing` only after verification is complete, all required `OPERATOR`/`MIXED` criteria are verified or explicitly waived, Architect Completion Gate is `passed`, and `precommit_report_path` has been written/surfaced;
 - the commit contains only the safely stageable run-owned subset of the canonical run-delta manifest; pre-existing unrelated dirty paths are never included;
 - use a concise task-derived commit message unless the user explicitly supplied one;
 - do not create intermediate implementation/fix commits by default; consolidate the verified run into the one final commit;
@@ -658,12 +759,12 @@ If the workspace is not a git repository, no commit is required; finish after ve
 
 ## [GPT] User-facing completion report contract
 
-After the final commit decision is resolved (committed, intentionally skipped by current user instruction, or safely blocked), produce one concise chat report. The prose report is the user's primary completion surface; internal artifacts remain the audit record.
+After the final commit decision is resolved (committed, intentionally skipped by current user instruction, safely blocked, or waiting on required operator review), produce one concise chat report. The prose report is the user's primary completion surface; internal artifacts remain the audit record.
 
 Use exactly these sections and include only verified facts:
 
 ```text
-DONE | BLOCKED
+DONE | TECHNICALLY COMPLETE — OPERATOR REVIEW REQUIRED | BLOCKED
 
 Decision
 - <1–3 lines: final locked architecture / outcome that was actually delivered>
@@ -710,6 +811,7 @@ Reporting rules:
 6. Do not dump full round transcripts, full lock, full diffs, or internal state paths into the normal completion report.
 7. When debate materially changed the plan, add one compact line after `Decision`: `Auditor — R1: <n> material changes · R2: <n> · R3: LOCK` (and R4/R5 only if actually used), followed by at most 2–4 key decisions that changed. Otherwise omit it.
 8. On terminal `BLOCKED`, use the same section order but replace implementation/verification claims with the exact blocker, evidence, and minimum next action; never format a blocked run as `DONE`.
+9. When machine/architect checks are complete but required operator-authority criteria remain `NOT VERIFIED`, use `TECHNICALLY COMPLETE — OPERATOR REVIEW REQUIRED`, list exactly what the operator still needs to inspect, and do not create the final commit.
 
 ## [GPT] Self-modification release gate
 
@@ -743,9 +845,15 @@ Treat these as state-machine failures, not suggestions:
 - executing on a backend different from the user's recorded `execution_backend`
 - implementation write before the exact validated lock is persisted and hashed inside the repo
 - implementation write before selected-backend capability preflight passes
-- implementation write before explicit user execution approval is bound to the current repo locked-plan hash
-- continuing implementation after the repo locked-plan hash changes without invalidating approval and obtaining fresh approval
-- reconstructing execution requirements from session chat/history instead of re-reading the approved repo locked-plan artifact on start/resume/handoff
+- implementation write before the one normal execution approval is anchored to the root lock hash and repair envelope
+- silently continuing after a post-approval lock change that was not classified/recorded in the non-material repair chain, or after a material change without a specific user change decision
+- asking the user for another generic execution `approve` after the normal approval merely because a non-material lock repair, operator-review checkpoint, audit phase, or commit phase occurred
+- model/DOM/computed-style evidence marking an `OPERATOR` acceptance criterion `VERIFIED` without explicit operator evidence
+- freezing a narrow modification scope around the first defect instance before a read-only sibling-pattern inventory
+- starting skeptical audit before required small-batch operator review evidence is recorded for material experience work
+- claiming `DONE` or creating the final commit while required operator-authority criteria remain `NOT VERIFIED`
+- reconstructing execution requirements from session chat/history instead of re-reading the current approved repo locked-plan artifact + repair chain on start/resume/handoff
+- starting skeptical audit before `architect_completion_gate.status=passed` for the current plan hash
 - audit/scope/prohibited-path completion based only on plain `git diff` without accounting for untracked/deleted paths
 - final verification missing an `Execution deviations` section
 - reporting a runtime as durable when only current liveness is proven
@@ -756,7 +864,7 @@ Treat these as state-machine failures, not suggestions:
 - execution after terminal BLOCKED
 - completion claim without fresh evidence
 - auto-pushing a repository
-- creating the final auto-commit before required verification/self-release E2E passes
+- creating the final auto-commit before required verification/self-release E2E passes or before the pre-commit delivery report is written and surfaced
 - sweeping pre-existing user edits into the final auto-commit
 - debate reopened for routine implementation
 
