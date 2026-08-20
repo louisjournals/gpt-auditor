@@ -187,8 +187,8 @@ Claude/architect replies:
 ```text
 [[COMPLETION_CHECK attempt=N from=CLAUDE]]
 VERDICT: ALL PASS
-- Implementation steps: <N/N PASS with evidence references>
-- Acceptance criteria: <N/N PASS with evidence references>
+- Implementation steps: <N/N accounted for; list DONE vs DEFERRED_TO_AUDIT vs DEFERRED_TO_COMMIT with evidence/reasons>
+- Acceptance criteria: <N/N accounted for; list VERIFIED_PRE_AUDIT vs DEFERRED_TO_AUDIT vs DEFERRED_TO_COMMIT with evidence/reasons>
 [[END COMPLETION_CHECK attempt=N]]
 ```
 
@@ -201,7 +201,7 @@ VERDICT: INCOMPLETE
 [[END COMPLETION_CHECK attempt=N]]
 ```
 
-Require the footer sentinel, non-streaming state, stable text across two bounded polls, correct assistant role, and the expected attempt number before consuming the result. Before sending an attempt, role-scan user messages for the same attempt sentinel so recovery cannot double-post. `ALL PASS` is valid only when the response checks every locked implementation step and acceptance criterion; a bare verdict without the line-by-line coverage/evidence result is malformed and gets a targeted completion-check format repair, not a debate round.
+Require the footer sentinel, non-streaming state, stable text across two bounded polls, correct assistant role, and the expected attempt number before consuming the result. Before sending an attempt, role-scan user messages for the same attempt sentinel so recovery cannot double-post. `ALL PASS` is valid only when the response checks every locked implementation step and acceptance criterion line by line, proves every pre-audit obligation, and explicitly classifies any protocol-correct future criterion as `DEFERRED_TO_AUDIT` or `DEFERRED_TO_COMMIT`. Deferred is not verified. A bare verdict or a response that pretends post-audit/commit criteria already passed is malformed and gets a targeted completion-check format repair, not a debate round.
 
 If the architect requests targeted read-only evidence, gather only the requested evidence and continue the **same completion-check attempt or a clearly numbered retry**. No implementation write occurs inside Claude transport itself; missing execution work is returned to the selected executor.
 

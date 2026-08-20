@@ -628,15 +628,15 @@ Passing every machine check does not end the run while operator-authority criter
 When the executor believes the locked work is finished, set `phase=architect_completion_check`. This gate exists to catch **omitted locked work before skeptical audit begins**; it is not another architecture debate and not a second user approval.
 
 1. Re-read the current repo locked-plan artifact and verify `current_plan_hash` plus any recorded repair chain.
-2. Write `execution_completion.md` in the external run-state directory and set `execution_completion_path`. It must enumerate **every locked Implementation step and every Acceptance criterion** one by one, each with `DONE|MISSING|NOT_PROVEN|N/A`, concise evidence references, relevant changed paths, commands/runtime checks, and any deviation. `N/A` requires a lock-supported reason.
+2. Write `execution_completion.md` in the external run-state directory and set `execution_completion_path`. It must enumerate **every locked Implementation step and every Acceptance criterion** one by one. Implementation steps use `DONE|MISSING|NOT_PROVEN|DEFERRED_TO_AUDIT|DEFERRED_TO_COMMIT|N/A`. Acceptance criteria use `VERIFIED_PRE_AUDIT|NOT_VERIFIED|FAILED|DEFERRED_TO_AUDIT|DEFERRED_TO_COMMIT|N/A`. Every row needs concise evidence/reasoning, relevant changed paths, commands/runtime checks, and any deviation. `N/A` or a deferred status requires a lock/protocol-supported reason.
 3. Build/update the canonical run-delta manifest so the architect sees the complete run-owned path set.
 4. Send the architect/lock owner a bounded packet containing the exact current `=== LOCKED PLAN ===` block, the completion matrix, canonical changed-path summary, and only the evidence needed to judge coverage. Do not send implementation rationale as proof.
-5. The architect must check every implementation step and acceptance criterion line by line. An executor assertion alone is not proof: each `PASS` needs an evidence reference or directly inspected read-only evidence. The architect may request targeted read-only repo/runtime evidence when needed.
-6. The architect returns only `ALL PASS` or `INCOMPLETE`. `INCOMPLETE` must list the exact missing/unproven step/criterion identifiers and the evidence/action needed to close each one.
+5. The architect must check every implementation step and acceptance criterion line by line. An executor assertion alone is not proof. Each implementation `DONE` and each `VERIFIED_PRE_AUDIT` criterion needs an evidence reference or directly inspected read-only evidence. An implementation step or criterion that logically occurs only during skeptical audit/regression or after the audit at the commit gate must be explicitly `DEFERRED_TO_AUDIT` or `DEFERRED_TO_COMMIT`; that is **accounted for, not completed/verified**. The architect must reject a deferred status if the item could and should already have been executed/proven before audit.
+6. The architect returns only `ALL PASS` or `INCOMPLETE`. `ALL PASS` means: every pre-audit obligation is executed/proven, every later implementation step or criterion is explicitly deferred to the correct protocol gate, every criterion due before audit is proven at the appropriate authority, and no locked item is silently omitted. `INCOMPLETE` must list the exact missing/unproven/mis-deferred step or criterion and the evidence/action needed to close it.
 7. On `INCOMPLETE`, set `architect_completion_gate.status=incomplete`; return the exact gaps to the same executor, complete them within the current execution contract, refresh the matrix, and repeat this gate. Do not start skeptical audit.
-8. Only on `ALL PASS` set `architect_completion_gate.status=passed` with the checked plan hash/evidence, then enter skeptical audit.
+8. Only on `ALL PASS` set `architect_completion_gate.status=passed` with the checked plan hash/evidence, then enter skeptical audit. Deferred criteria remain mandatory and must later become `VERIFIED` (or an explicit user waiver where allowed) before final commit.
 
-Architect Completion Gate is a **coverage/completeness gate**, not the skeptical audit. `ALL PASS` means the locked work appears fully executed and evidenced; it does not mean the implementation is defect-free. For `OPERATOR` or `MIXED` acceptance criteria, Claude may mark the item complete only when the completion matrix includes explicit operator evidence; it must return `INCOMPLETE`/`NOT VERIFIED` rather than substituting its own perception.
+Architect Completion Gate is a **coverage/completeness gate**, not the skeptical audit. `ALL PASS` means the executor did not omit locked work before audit and all future-gated obligations are explicitly accounted for; it does **not** mean every final acceptance criterion has already passed or that the implementation is defect-free. For `OPERATOR` or `MIXED` criteria that are due before audit, Claude may mark them complete only when the matrix includes explicit operator evidence; it must return `INCOMPLETE` rather than substituting its own perception.
 
 ### [CLAUDE-via-paste] Architect completion check template
 
@@ -647,18 +647,18 @@ Current locked plan:
 <exact repo LOCKED_PLAN block>
 
 Executor completion matrix:
-<every implementation step + acceptance criterion with status/evidence>
+<every implementation step + acceptance criterion with phase-aware status/evidence>
 
 Canonical run-owned paths:
 <complete manifest summary>
 
-Check every locked implementation step and acceptance criterion one by one. Do not infer completion from the executor's claim alone; require evidence.
+Check every locked implementation step and acceptance criterion one by one. Do not infer completion from the executor's claim alone; require evidence. Pre-audit obligations must already be executed/proven. Criteria that logically belong to skeptical audit/regression or final commit may be `DEFERRED_TO_AUDIT` / `DEFERRED_TO_COMMIT`, but only when the deferment is protocol-correct and explicit. Deferred means accounted for, not verified.
 
 Return exactly one verdict:
 ALL PASS
 or
 INCOMPLETE
-- <exact missing/unproven item + required evidence/action>
+- <exact missing/unproven/mis-deferred item + required evidence/action>
 ```
 
 ## [GPT] Audit and finish

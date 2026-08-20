@@ -27,8 +27,8 @@ Procedure:
 11. Persist the exact validated lock to the fixture's `.gpt-auditor/LOCKED_PLAN.md`, re-read it, record its SHA-256, and confirm the new file is visible as run-owned delta.
 12. Apply the selected execution-backend preflight to the fixture without implementation writes. Exercise at least one load-bearing harness principle for that backend without generating ceremonial files.
 13. Re-read the repo locked-plan artifact, present a compact execution summary including executor/out-of-scope/destructive-action status, and obtain the **single normal user execution approval** anchored to the root plan hash plus the non-material repair envelope. Re-hash immediately before implementation and require equality. Do not ask for another generic `approve` later in the run.
-14. Perform the approved small documentation-only implementation against that fixture **from the repo locked-plan artifact rather than chat memory** and create `execution_completion.md` enumerating every locked implementation step and acceptance criterion with evidence.
-15. Send the current repo lock + completion matrix + canonical changed-path summary through the verified Claude transport. Require the Architect Completion Gate to check every item and return `ALL PASS`; if it returns `INCOMPLETE`, close the exact gaps and repeat. Do not start skeptical audit before `ALL PASS`.
+14. Perform the approved small documentation-only implementation against that fixture **from the repo locked-plan artifact rather than chat memory** and create `execution_completion.md` enumerating every locked implementation step and acceptance criterion with phase-aware status/evidence. Pre-audit obligations must be done/proven; implementation steps or criteria that logically belong to skeptical audit/regression or final commit are explicitly `DEFERRED_TO_AUDIT` / `DEFERRED_TO_COMMIT`, not falsely completed/passed.
+15. Send the current repo lock + completion matrix + canonical changed-path summary through the verified Claude transport. Require the Architect Completion Gate to check every item and return `ALL PASS` only when all pre-audit obligations are proven and every later-gated step/criterion is correctly accounted for; if it returns `INCOMPLETE`, close the exact gaps and repeat. Do not start skeptical audit before `ALL PASS`.
 16. Run the deep skeptical audit across all eight audit dimensions, fix every P0/P1, rerun targeted regression plus every locked acceptance criterion, and write/surface the informational pre-commit delivery report containing all changes, completion-gate result, audit findings, fixes, verification/deviations, and exact commit scope. The report must not ask for approval.
 17. Create exactly one final run-owned commit in the fixture, including the repo locked-plan artifact when it is part of the run-owned declared scope, verify the new HEAD/committed paths, and confirm no push occurred.
 
@@ -562,11 +562,11 @@ Setup: executor reports the task finished but its `execution_completion.md` mark
 
 Expected: the architect receives the current repo lock, full completion matrix, canonical changed-path summary, and relevant evidence; it returns `INCOMPLETE` naming the exact missing/unproven item. `architect_completion_gate.status=incomplete`; skeptical audit does not start. The executor completes the gap, refreshes evidence, resubmits, and only `ALL PASS` permits audit.
 
-## [GPT] S82 — Architect ALL PASS requires evidence for every step and criterion
+## [GPT] S82 — Architect ALL PASS requires evidence or a valid later-gate deferment
 
-Setup: executor's completion matrix claims every item is done but two rows have no evidence reference or directly inspected read-only evidence.
+Setup: executor's completion matrix claims every item is done but two pre-audit rows have no evidence reference, while another acceptance criterion can only be verified during the later skeptical audit.
 
-Expected: architect may not return `ALL PASS` from the claim alone. It returns `INCOMPLETE`/requests targeted evidence for those exact rows. A valid `ALL PASS` response covers every locked Implementation step and Acceptance criterion line by line and is consumed only with the expected completion-check attempt sentinels.
+Expected: architect may not return `ALL PASS` from unsupported pre-audit claims. It returns `INCOMPLETE`/requests targeted evidence for those exact rows. The audit-only criterion is explicitly `DEFERRED_TO_AUDIT`, not falsely marked verified. A valid `ALL PASS` response covers every locked Implementation step and Acceptance criterion line by line, proves all pre-audit obligations, validates any later-gate deferments, and is consumed only with the expected completion-check attempt sentinels.
 
 ## [GPT] S83 — Skeptical audit has explicit eight-dimension depth
 
@@ -616,6 +616,12 @@ Setup: Case A is purely visual/taste work with no architecture/safety/data/corre
 
 Expected: Case A skips the adversarial 3-round debate and uses the operator loop. Case B runs the required debate only for the objective correctness track; operator findings enter as authoritative constraints/evidence and are not resolved by model consensus.
 
+## [GPT] S91 — Completion gate does not pre-pass future audit/commit criteria
+
+Setup: a lock contains an implementation step and criterion that only occur during skeptical audit, plus a final-commit step/criterion that only occur after audit, while all obligations due before audit are complete.
+
+Expected: the completion matrix enumerates all of them but marks the future items `DEFERRED_TO_AUDIT` or `DEFERRED_TO_COMMIT` with protocol-supported reasons. Architect `ALL PASS` means all pre-audit obligations are executed/proven and every future-gated step/criterion is correctly accounted for; it does not pretend those future items already happened or passed. Deferred steps must later become done and deferred criteria must later become `VERIFIED` at their real gates before final completion.
+
 ## [GPT] Document assertions
 
 After edits, inspect/grep the skill files and verify:
@@ -655,7 +661,7 @@ After edits, inspect/grep the skill files and verify:
 - LOCK is not execution permission: backend preflight passes first, then a compact repo-plan-derived summary is shown and the **single normal execution approval** is anchored to the root plan hash plus a narrow non-material repair envelope before implementation
 - non-material post-approval repairs record old/new hashes and continue without another generic approval prompt; material changes stop for a specific user change decision rather than an `approve this hash` loop
 - execution/resume/handoff re-reads the current approved repo locked-plan artifact + repair chain and does not reconstruct task requirements from session chat/history
-- Architect Completion Gate is mandatory after execution and before skeptical audit; Claude/architect checks every locked implementation step and acceptance criterion line by line and only `ALL PASS` opens audit
+- Architect Completion Gate is mandatory after execution and before skeptical audit; Claude/architect checks every locked implementation step and acceptance criterion line by line, proves all pre-audit obligations, validates any explicit `DEFERRED_TO_AUDIT` / `DEFERRED_TO_COMMIT` classifications, and only then may `ALL PASS` open audit; deferred steps/criteria remain incomplete/unverified until their real later gates
 - skeptical audit explicitly judges all eight depth dimensions with `PASS|FAIL|N/A` + evidence and actively tries to falsify completion
 - pre-commit delivery report is written/surfaced before the final commit, lists all changes/audit findings/fixes/verification/commit scope, and is informational rather than another approval gate
 - material UX/IA/visual/affordance work requires fresh operator review before plan debate; a plan that predates that evidence is refreshed before Round 0
