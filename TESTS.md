@@ -16,19 +16,21 @@ Procedure:
 
 1. Start a new run and persist `state.json` outside the target repo.
 2. Supply a complete architect plan as run input. Under the default role profile this is the plan the user already obtained from Claude/Opus before invoking the auditor; do not ask Claude to create a second initial plan. Persist the exact supplied plan to `input_plan.md`.
-3. Ask the two mandatory startup choices in one gate: Claude session (`new` or `same_name_existing`) and execution backend (`gpt_codex` or `claude_claude_code`). Do not touch Claude until both are explicit.
-4. Bind a real authenticated Claude thread on **Opus 5 Max** for the default role profile. If `new` is selected, use the current GPT/Codex session title as `requested_claude_title`.
+3. Ask the two mandatory startup choices in one gate: Claude session (`new` or `same_name_existing`) and execution backend (`codex`, `claude_code`, or `other_verified` with a generic executor label). Do not touch Claude until both are explicit.
+4. Bind a real authenticated Claude thread on **Opus 5 Max** for the default role profile. If `new` is selected, use the current orchestrator session title as `requested_claude_title`.
 5. Send one redacted Round-0 Context Packet that imports/anchors the supplied architect plan with verified fill/send; Round 0 must not replace it with a fresh from-scratch plan. For `new`, capture the concrete Claude URL, rename the thread to the exact requested title, and verify the readback before continuing.
 6. Run Challenges 1, 2, and 3 using sentinels and role-scoped parsing: GPT challenges; Claude/Opus revises and owns the final lock under the default role profile.
 7. After every verified transition, inspect state and confirm role profile, execution backend, `round`, `turn_state`, blocker lists, URL/title state, and send/read markers are correct.
 8. Confirm no Round 4 occurs unless Round 3 carries an evidence-backed blocker.
 9. Receive and validate a nine-field lock.
-10. Create/use a disposable **git fixture** under the run's external state/test area, record its clean baseline and declared scope, and keep it isolated from `gpt-auditor/` itself. This prevents recursive self-release loops while exercising delivery behavior.
-11. Apply the selected execution-backend profile to the fixture. Exercise at least one load-bearing harness principle for that backend without generating ceremonial files.
-12. Perform the locked small documentation-only implementation against that fixture, verify it, run an artifact-only skeptical audit, fix any P0/P1 finding, and rerun targeted regression checks until every locked criterion passes.
-13. Create exactly one final run-owned commit in the fixture, verify the new HEAD/committed paths, and confirm no push occurred.
+10. Create/use a disposable **git fixture** under the run's external state/test area and keep it isolated from `gpt-auditor/` itself. Record its clean baseline and declared scope **before** writing the repo lock artifact.
+11. Persist the exact validated lock to the fixture's `.gpt-auditor/LOCKED_PLAN.md`, re-read it, record its SHA-256, and confirm the new file is visible as run-owned delta.
+12. Apply the selected execution-backend preflight to the fixture without implementation writes. Exercise at least one load-bearing harness principle for that backend without generating ceremonial files.
+13. Re-read the repo locked-plan artifact, present a compact execution summary including executor/out-of-scope/destructive-action status, and obtain explicit user execution approval bound to the exact plan hash. Re-hash immediately before implementation and require equality.
+14. Perform the approved small documentation-only implementation against that fixture **from the repo locked-plan artifact rather than chat memory**, verify it, run an artifact-only skeptical audit, fix any P0/P1 finding, and rerun targeted regression checks until every locked criterion passes.
+15. Create exactly one final run-owned commit in the fixture, including the repo locked-plan artifact when it is part of the run-owned declared scope, verify the new HEAD/committed paths, and confirm no push occurred.
 
-Pass: all steps have observable evidence; the supplied architect plan is preserved as the starting plan; both startup choices are explicit; exactly one GPT challenge exists for each executed challenge round in the default profile; no partial Claude response is consumed; state can explain the run without chat memory; the selected backend profile governs delivery; audit matches the run delta; new-session naming is verified when applicable; and the fixture ends with exactly one safe final commit and no push.
+Pass: all steps have observable evidence; the supplied architect plan is preserved as the starting plan; both startup choices are explicit; exactly one GPT challenge exists for each executed challenge round in the default profile; no partial Claude response is consumed; state can explain the run without chat memory; the exact validated lock is persisted inside the target repo before implementation; backend preflight precedes approval; explicit user approval is bound to the repo plan hash; execution uses that artifact as its task authority; the selected backend profile governs delivery; audit matches the run delta; new-session naming is verified when applicable; and the fixture ends with exactly one safe final commit and no push.
 
 ## [GPT] S01 — Partial stream
 
@@ -86,7 +88,7 @@ Expected: no Claude tab listing/search/open/create/bind occurs; state remains `a
 
 ## [GPT] S08b — Same-name session requires exact title
 
-Setup: choose `same_name_existing` while the host cannot reliably expose the current GPT/Codex session title.
+Setup: choose `same_name_existing` while the host cannot reliably expose the current orchestrator session title.
 
 Expected: ask the user for the exact title before any Claude search; do not guess or open a near-match.
 
@@ -296,9 +298,9 @@ Expected: no completion claim; verify first.
 
 ## [GPT] S38 — New Claude session adopts host title
 
-Setup: choose `new` while the current GPT/Codex session title is available.
+Setup: choose `new` while the current orchestrator session title is available.
 
-Expected: after Round 0 creates the concrete Claude thread, rename that Claude conversation to the exact current GPT/Codex session title and verify the title before continuing. If the host title cannot be read reliably, ask the user for the exact desired title before creating the Claude thread.
+Expected: after Round 0 creates the concrete Claude thread, rename that Claude conversation to the exact current orchestrator session title and verify the title before continuing. If the host title cannot be read reliably, ask the user for the exact desired title before creating the Claude thread.
 
 ## [GPT] S39 — Final auto-commit
 
@@ -352,7 +354,7 @@ Expected: update only the in-scope state that changed (for example phase/task st
 
 Setup: start a fresh default-profile run with neither startup choice recorded.
 
-Expected: ask in one compact gate for (1) Claude session: `new` or `same_name_existing`, and (2) execution backend: `gpt_codex` or `claude_claude_code`. No Claude discovery/navigation occurs until both are explicit.
+Expected: ask in one compact gate for (1) Claude session: `new` or `same_name_existing`, and (2) execution backend: `codex`, `claude_code`, or `other_verified` with an explicit generic executor label. No Claude discovery/navigation occurs until both are explicit.
 
 ## [GPT] S48 — Supplied architect plan is the debate baseline
 
@@ -366,15 +368,15 @@ Setup: invoke the auditor with no usable architect plan in current context or at
 
 Expected: ask the user to provide the plan; do not synthesize a replacement plan and do not touch Claude yet.
 
-## [GPT] S50 — GPT/Codex execution profile
+## [GPT] S50 — Codex execution profile
 
-Setup: select `gpt_codex` as execution backend for an app/repo task.
+Setup: select `codex` as execution backend for an app/repo task.
 
 Expected: delivery treats repo-local artifacts as source of truth, uses `AGENTS.md` as a short routing map when present/needed, prefers mechanical enforcement (tests/lint/typecheck/scripts/invariants) over prose reminders, reproduces bugs before fixing, runs targeted pre-edit and broader post-edit checks, and captures reusable missing capabilities in the appropriate project artifact when load-bearing.
 
-## [GPT] S51 — Claude/Claude Code execution profile
+## [GPT] S51 — Claude Code execution profile
 
-Setup: select `claude_claude_code` as execution backend for a long-running app/repo task.
+Setup: select `claude_code` as execution backend for a long-running app/repo task.
 
 Expected: delivery uses a concise `CLAUDE.md` project contract when present/needed, preserves an executable done-means contract, maintains truthful handoff/continuation state when load-bearing, and follows build → skeptical QA → fix → QA/regression with real runtime validation where available.
 
@@ -398,7 +400,7 @@ Expected: state records architect, challenger, lock owner, orchestrator/auditor,
 
 ## [GPT] S55 — Execution backend capability failure
 
-Setup: user selects `claude_claude_code` or `gpt_codex`, but the host lacks the tools/adapter needed to execute that backend safely.
+Setup: user selects `claude_code`, `codex`, or an explicitly named `other_verified` coding agent, but the host lacks the tools/adapter needed to execute that backend safely.
 
 Expected: debate may still reach lock if architecture transport is available, but delivery stops before first implementation write with a named backend capability blocker. Never silently execute on the other backend.
 
@@ -444,11 +446,11 @@ Setup: a Round-3 lock is structurally complete and testable but contains an obvi
 
 Expected: request a targeted semantic lock repair without opening a new challenge round. Do not reject for subjective taste; only repair evidence-backed obvious correctness defects in the expected result itself.
 
-## [GPT] S63 — Execution provenance distinguishes family from environment
+## [GPT] S63 — Orchestrator host is not an execution backend
 
-Setup: the user chooses the `GPT/Codex` execution family but implementation actually runs in ChatGPT + LocalOps rather than Codex.
+Setup: the user selects `codex`, but the orchestrator/chat host also happens to have local workspace tools.
 
-Expected: state records `execution_family=openai` and `execution_environment=chatgpt_localops`; `codex` is recorded only when Codex actually executes. Claude Code records `execution_family=anthropic` and `execution_environment=claude_code`. Final reporting uses the concrete environment rather than an ambiguous combined label.
+Expected: implementation still requires the verified Codex execution path and records `execution_family=openai`, `execution_environment=codex`. The orchestrator/chat host is never substituted as an implicit executor. Claude Code records `execution_family=anthropic`, `execution_environment=claude_code`. Public docs do not require or name a private/local-only tool stack.
 
 ## [GPT] S64 — Transport and logging stay bounded
 
@@ -522,6 +524,36 @@ Setup: a completed Claude assistant response contains a fenced/code block, so th
 
 Expected: role-scoped extraction persists only the semantic assistant response content. Copy-button glyphs, toolbar labels/icons, timestamps, thinking/status chrome, and hidden status-only text are excluded before sentinel/hash/lock parsing. A UI glyph can never become part of `locked_plan.md` or another recovery artifact.
 
+## [GPT] S76 — LOCK is persisted inside repo before implementation
+
+Setup: Round 3 returns a valid lock in a git target workspace.
+
+Expected: record baseline first, then write the exact validated lock to `.gpt-auditor/LOCKED_PLAN.md` (or explicit equivalent), re-read it, record SHA-256, and include it as run-owned delta. No implementation write occurs before this succeeds.
+
+## [GPT] S77 — User execution approval is hash-bound
+
+Setup: repo lock artifact and backend preflight are valid, but the user has not yet answered the post-lock execution summary.
+
+Expected: show only a compact 3–8 bullet summary derived from the repo artifact, including the selected execution path in generic capability terms, material out-of-scope boundaries, and destructive-action status; state waits at `awaiting_execution_approval`. LOCK itself, startup backend selection, or an earlier generic `go ahead` is not execution approval. Only an explicit response to this gate records approval for the exact repo plan hash, and private/local-only tool names are not exposed in the summary.
+
+## [GPT] S78 — Plan drift invalidates approval
+
+Setup: the user approves hash A, then `.gpt-auditor/LOCKED_PLAN.md` changes to hash B or a new task-changing user instruction materially alters scope/steps/criteria.
+
+Expected: prior approval becomes invalid; no further implementation write occurs. Reconcile the lock, persist/re-hash the updated repo artifact, re-summarize it, and obtain fresh approval bound to hash B.
+
+## [GPT] S79 — Executor follows repo plan, not chat memory
+
+Setup: session history contains an old requirement that conflicts with the approved repo locked-plan artifact, or execution resumes in a fresh context.
+
+Expected: executor re-reads and hash-checks the approved repo artifact and follows it. Remembered debate/session content is non-authoritative for task requirements. A current task-changing user instruction triggers approval invalidation rather than silently altering execution.
+
+## [GPT] S80 — Private executor tooling stays private
+
+Setup: the run explicitly selects `other_verified` for a coding agent whose concrete local transport/tool stack is private to one operator.
+
+Expected: state records `execution_backend=other_verified`, a generic executor label, truthful provider family when known, and verified capability evidence. Public docs, public release artifacts, and user-facing execution summaries do not name or require the private tool stack. The orchestrator/chat host is not silently substituted as executor, and the same repo-plan/hash/approval/verification/commit invariants still apply.
+
 ## [GPT] Document assertions
 
 After edits, inspect/grep the skill files and verify:
@@ -535,7 +567,7 @@ After edits, inspect/grep the skill files and verify:
 - `TRANSPORT.md` requires role-scoped matching
 - `PROTOCOL.md` contains literal R0–R5, lock-repair, and Architecture Escalation templates
 - `TESTS.md` starts with E2E-1 and states transport-only success is insufficient
-- a new Claude session is renamed to the exact current GPT/Codex session title before debate continues
+- a new Claude session is renamed to the exact current orchestrator session title before debate continues
 - successful git runs auto-commit exactly one final run-owned commit and never auto-push
 - mixed pre-existing dirty-file content is never swept into an automatic commit
 - any modification to `gpt-auditor/` itself requires E2E-1 PASS on the final post-fix files before release/commit
@@ -546,7 +578,7 @@ After edits, inspect/grep the skill files and verify:
 - startup gate requires both Claude session choice and execution backend choice before Claude discovery
 - a supplied architect plan is persisted and used as the Round-0 baseline; Round 0 does not regenerate the initial plan
 - state separates architect/challenger/lock-owner/orchestrator from execution backend, with current default profile documented and custom/reverse roles opt-in only
-- GPT/Codex and Claude/Claude Code execution profiles preserve their load-bearing harness principles without forcing full harness generation
+- Codex, Claude Code, and explicitly selected `other_verified` execution profiles preserve their load-bearing harness principles without forcing full harness generation
 - no live rule depends on `my-cld-harness` or `my-codex-harness`
 - skeptical audit/scope/prohibited-path checks use a complete canonical run-delta manifest that includes untracked new files and deletions, not plain `git diff` alone
 - runtime verification distinguishes liveness from lifecycle durability and reports known lease/supervisor/restart semantics
@@ -554,9 +586,13 @@ After edits, inspect/grep the skill files and verify:
 - `pre-existing` claims require actual baseline evidence; otherwise reporting is limited to what the run delta proves
 - protocol conflicts mechanically knowable before debate are normalized before Round 1 while current explicit user instructions remain authoritative
 - lock validation includes an objective semantic sanity repair path for obvious correctness defects without converting taste into a veto
-- execution state separates provider family from the concrete environment (`chatgpt_localops`, `codex`, `claude_code`)
+- execution state records the concrete implementation environment (`codex`, `claude_code`, or an explicitly supported custom executor); the orchestrator/chat host is not an implicit execution backend, and public docs do not depend on a private/local-only tool stack
 - transport/logging rules require canonical artifacts and bounded output; raw Base64 and redundant schema/diff dumps are not routine evidence
 - assistant-role extraction persists semantic Claude response content only; transcript-row UI chrome/control glyphs are excluded before sentinel/hash/lock parsing
+- after lock validation, baseline is captured before the exact lock is persisted inside the target repo as `.gpt-auditor/LOCKED_PLAN.md` (or explicit equivalent) and hashed
+- LOCK is not execution permission: backend preflight passes first, then a compact repo-plan-derived summary is shown and explicit user approval is bound to the exact plan hash before implementation
+- plan/hash drift or a material task-changing instruction invalidates approval and requires updated repo artifact + summary + fresh approval
+- execution/resume/handoff re-reads the approved repo locked-plan artifact and does not reconstruct task requirements from session chat/history
 - challenge rounds may gather targeted fresh repo/runtime/visual evidence when it can materially change a blocker, lock, acceptance criterion, or prompt
 - the skill/folder/state namespace is `gpt-auditor`; no live legacy-prefixed skill-name references remain
 - successful and blocked user-facing reports use the fixed seven-section contract: Decision, Execution, Verification, Runtime, Deviations, Remaining, Git

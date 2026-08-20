@@ -8,7 +8,7 @@ Debate transport and execution-backend transport are separate concerns. Under th
 2. GPT reasons/challenges in its current native host turn.
 3. GPT writes the next challenge/contract message to the bound Claude architect thread.
 
-GPT's own chat composer is never part of the browser transport contract. The selected post-lock execution backend (`gpt_codex` or `claude_claude_code`) does not change these default debate semantics. A custom/reverse role profile must define an equivalent verified remote-thread mapping before use.
+GPT's own chat composer is never part of the browser transport contract. The selected post-lock execution backend (`codex` or `claude_code`) does not change these default debate semantics. A custom/reverse role profile must define an equivalent verified remote-thread mapping before use.
 
 ## [GPT] Required semantic operations
 
@@ -43,7 +43,7 @@ Poll with bounded waits until `get_latest_completed` succeeds or an explicit err
 
 ### [GPT] `verified_rename_thread(title)` — required for `new`
 
-Postcondition: after Round 0 creates a concrete Claude conversation, the bound thread title exactly equals the current GPT/Codex session title requested for this run. Read the title back after rename; a best-effort click is not enough.
+Postcondition: after Round 0 creates a concrete Claude conversation, the bound thread title exactly equals the current orchestrator session title requested for this run. Read the title back after rename; a best-effort click is not enough.
 
 If the adapter cannot rename and verify Claude conversations, `new` mode is not compliant for this run. Do not continue under Claude's auto-generated title.
 
@@ -96,10 +96,10 @@ If the click may have succeeded but the postcondition was not observed, keep sta
 
 This gate happens **before** Claude discovery/preflight. The supplied architect plan must already be present/persistable, and the user must explicitly choose both:
 
-1. Claude session: create a **new Claude session** or find/reuse a **same-name existing session** whose title exactly matches the current GPT/Codex session title; and
-2. execution backend: **GPT/Codex** (`gpt_codex`) or **Claude/Claude Code** (`claude_claude_code`).
+1. Claude session: create a **new Claude session** or find/reuse a **same-name existing session** whose title exactly matches the current orchestrator session title; and
+2. execution backend: **Codex** (`codex`), **Claude Code** (`claude_code`), or an explicitly identified **other verified coding agent** (`other_verified`).
 
-Until both choices are explicit and the architect plan is available, do not list/search/open/create/bind Claude chats. Do not reuse previous-run choices. Resolve the exact current GPT/Codex session title for both session modes; if the host cannot read it reliably, ask for the exact title before searching or creating Claude. For `same_name_existing`, require exactly one exact-title Claude match; zero or multiple exact matches are ambiguous and must be resolved by the user before binding.
+Until both choices are explicit and the architect plan is available, do not list/search/open/create/bind Claude chats. Do not reuse previous-run choices. Resolve the exact current orchestrator session title for both session modes; if the host cannot read it reliably, ask for the exact title before searching or creating Claude. For `same_name_existing`, require exactly one exact-title Claude match; zero or multiple exact matches are ambiguous and must be resolved by the user before binding.
 
 For `same_name_existing`, bind the exact matched conversation URL before Round 0. For `new`, a verified authenticated `claude.ai/new` page may be the temporary bootstrap target; after the verified Round-0 send, capture the resulting concrete Claude conversation URL, persist it as `claude_chat_url`, append it to `thread_lineage`, then run `verified_rename_thread(requested_claude_title)`. Do not wait for/read/advance the architecture reply until both concrete URL binding and exact-title verification succeed.
 
@@ -113,8 +113,8 @@ Before Round 0, verify without altering the Claude composer:
 - browser adapter capabilities exist
 - adapter can distinguish user-role and assistant-role messages
 - the user has explicitly chosen `new` or `same_name_existing`
-- the user has explicitly chosen `gpt_codex` or `claude_claude_code`
-- the exact current GPT/Codex session title is known for deterministic matching/naming
+- the user has explicitly chosen `codex`, `claude_code`, or `other_verified`; `other_verified` also has an explicit generic executor label
+- the exact current orchestrator session title is known for deterministic matching/naming
 - for `same_name_existing`, the exact Claude thread URL is bound and reachable; for `new`, an authenticated new-chat bootstrap target is reachable and the adapter supports `verified_rename_thread`
 - Claude session is authenticated
 - selected Claude model is **Opus 5 Max** under the default role profile; if not, switch and verify before continuing
@@ -129,29 +129,31 @@ If any required capability is missing, stop before sending Claude anything and n
 
 The browser adapter above proves only debate transport. Post-lock execution needs a separate verified backend capability check.
 
-For `gpt_codex`, the selected host/backend must be able to operate on the exact workspace with the required file, command/build/test, runtime-validation, and git/snapshot primitives. Record the actual environment as `chatgpt_localops` when the current ChatGPT host drives LocalOps, or `codex` only when Codex itself executes. Both map to `execution_family=openai`.
+For `codex`, there must be an actual Codex execution path connected to the exact workspace with the required file, command/build/test, runtime-validation, and git/snapshot primitives. Record `execution_family=openai`, `execution_environment=codex`. A chat host that can only orchestrate or debate does **not** satisfy this requirement.
 
-For `claude_claude_code`, there must be an actual Claude Code execution path connected to the exact workspace with equivalent file/command/build/test/verification capabilities and observable results. Record `execution_family=anthropic`, `execution_environment=claude_code`. A claude.ai chat tab by itself is **not** Claude Code and does not satisfy this requirement.
+For `claude_code`, there must be an actual Claude Code execution path connected to the exact workspace with equivalent file/command/build/test/verification capabilities and observable results. Record `execution_family=anthropic`, `execution_environment=claude_code`. A claude.ai chat tab by itself is **not** Claude Code and does not satisfy this requirement.
 
-If the selected execution backend cannot be verified, preserve the lock but stop before any implementation write with `backend_adapter_failure`. Never switch to the other backend automatically.
+For `other_verified`, require an explicitly selected coding-agent path with a generic label plus equivalent workspace/edit/command/build/test/runtime/git observability. Record the true provider family when known and `execution_environment=other_verified`. Private/local-only tool names may be retained in local run state when operationally necessary, but they are not a public dependency and must not appear in public docs or release-facing summaries.
 
-## [GPT] ChatGPT + LocalOps mapping
+If the selected execution backend cannot be verified, preserve the lock but stop before any implementation write with `backend_adapter_failure`. Never switch to another backend automatically.
 
-Use LocalOps capabilities by postcondition, not by tool name alone.
+## [GPT] Generic browser-host mapping
 
-**Background-first rule:** when a browser primitive accepts an exact `tabUrl`/tab identity, use it against the Claude thread without activating or focusing that tab. Opening, filling, sending, waiting, reading, model verification, rename, and continuation recovery should stay off the user's foreground whenever equivalent background DOM control exists. Foreground activation is a fallback only when the required postcondition cannot be achieved otherwise; record that fallback as a transport deviation.
+Map whatever browser controls the host exposes to the required semantic postconditions rather than depending on private tool names.
 
-Typical mapping:
+**Background-first rule:** when a browser primitive accepts an exact tab URL or tab identity, use it against the Claude thread without activating or focusing that tab. Opening, filling, sending, waiting, reading, model verification, rename, and continuation recovery should stay off the user's foreground whenever equivalent background control exists. Foreground activation is a fallback only when the required postcondition cannot be achieved otherwise; record that fallback as a transport deviation.
 
-- discover/bind Claude thread: `browser_list_tabs`
-- role-scoped thread inspection: `browser_run_js` against the exact Claude URL
-- broad diagnostic text only when useful: `browser_get_text`
-- fill with readback: `browser_fill`
-- send: `browser_click`
-- rename + title verification for new sessions: browser DOM/click/fill primitives with exact title readback
-- bounded waiting: `browser_wait_for`, repeated as needed for the overall deadline
+Required semantic operations:
 
-`browser_get_text` alone is insufficient for idempotency because it flattens roles. Prefer role-scoped DOM inspection for send/receive verification.
+- discover and bind the exact Claude thread;
+- inspect user/assistant messages with role separation;
+- fill the composer and verify readback;
+- send exactly once with an observable postcondition;
+- rename a new thread and verify the exact title;
+- wait within a bounded overall deadline;
+- read completed assistant semantic content without UI chrome.
+
+Flat page-text alone is insufficient for idempotency because it can collapse message roles. Prefer role-scoped DOM or equivalent semantic inspection for send/receive verification.
 
 ## [GPT] Codex mapping
 

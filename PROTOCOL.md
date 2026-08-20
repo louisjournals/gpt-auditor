@@ -16,10 +16,10 @@ Minimum state fields:
 {
   "run_id": "...",
   "workspace": "...",
-  "owner_host": "chatgpt-localops|codex|other",
-  "phase": "startup_choice|preflight|context|debate|locked|backend_preflight|executing|verifying|auditing|fixing|regression|release_verifying|committing|done|blocked",
+  "owner_host": "orchestrator_host|codex|other",
+  "phase": "startup_choice|preflight|context|debate|locked|repo_lock_persisted|backend_preflight|awaiting_execution_approval|executing|verifying|auditing|fixing|regression|release_verifying|committing|done|blocked",
   "round": 1,
-  "turn_state": "awaiting_startup_choices|ready_to_challenge|challenge_sent|claude_complete|response_processed|lock_pending",
+  "turn_state": "awaiting_startup_choices|ready_to_challenge|challenge_sent|claude_complete|response_processed|lock_pending|awaiting_execution_approval",
   "role_profile": "default_claude_architect_gpt_challenger|custom",
   "roles": {
     "architect": "Claude Opus 5 Max",
@@ -27,9 +27,10 @@ Minimum state fields:
     "lock_owner": "Claude Opus 5 Max",
     "orchestrator_auditor": "GPT-5.6"
   },
-  "execution_backend": "gpt_codex|claude_claude_code",
+  "execution_backend": "codex|claude_code|other_verified",
+  "execution_backend_label": "Codex|Claude Code|<generic custom label>",
   "execution_family": "openai|anthropic|other",
-  "execution_environment": "chatgpt_localops|codex|claude_code|other_verified",
+  "execution_environment": "codex|claude_code|other_verified",
   "execution_backend_caps": [],
   "claude_session_mode": "new|same_name_existing",
   "requested_claude_title": "...",
@@ -48,6 +49,9 @@ Minimum state fields:
   "open_blockers": [],
   "resolved": [],
   "locked_plan_path": "...",
+  "repo_locked_plan_path": ".gpt-auditor/LOCKED_PLAN.md",
+  "repo_locked_plan_hash": "sha256:...",
+  "execution_approval": {"status": "not_requested|awaiting|approved|invalidated", "approved_plan_hash": null, "approved_at": null, "evidence": null},
   "baseline": {"head_sha": null, "dirty_paths": [], "snapshot_manifest": [], "evidence": {}},
   "declared_scope": [],
   "scope_extensions": [],
@@ -100,11 +104,11 @@ Normalization may resolve procedural contradictions, not architecture disagreeme
 Every new auditor run starts in `phase=startup_choice` and `turn_state=awaiting_startup_choices`. Before any Claude chat discovery or browser navigation, collect **both** choices in one compact gate:
 
 1. Claude session: `new` or `same_name_existing`; and
-2. execution backend: `gpt_codex` or `claude_claude_code`.
+2. execution backend: `codex`, `claude_code`, or `other_verified` with a human-readable executor label.
 
 Do not inspect/search/open/create/bind Claude chats until both choices are explicit and the supplied architect plan is present. Persist each choice only after the user explicitly selects it. Never inherit a previous run's execution backend or session mode.
 
-Resolve `requested_claude_title` from the exact current GPT/Codex session title for both session modes; if the host cannot read that title reliably, ask the user for the exact title before any Claude search or new-session creation.
+Resolve `requested_claude_title` from the exact current orchestrator session title for both session modes; if the host cannot read that title reliably, ask the user for the exact title before any Claude search or new-session creation.
 
 For `same_name_existing`, require exactly one exact-title match. Zero matches or multiple exact matches are ambiguous and must return to the user for an exact thread identifier; do not guess.
 
@@ -122,6 +126,7 @@ Under the default role profile, verify the chosen Claude thread is **Opus 5 Max*
 | `claude_complete` | Re-read the stored assistant-role response and process it. |
 | `response_processed` | Advance to the next round, or to lock validation if appropriate. |
 | `lock_pending` | Re-run lock validation against the stored Claude response. |
+| `awaiting_execution_approval` | Re-read and hash the repo locked-plan artifact, show the compact execution summary if needed, and wait for explicit user approval. Do not make implementation writes. |
 
 `challenge_sent` may be written only after `verified_send` succeeds. If a send is ambiguous, state remains `ready_to_challenge`; recovery starts with the idempotency scan.
 
@@ -134,7 +139,9 @@ Persist the evidence needed to resume without chat memory:
 - save the **redacted** Round-0 packet to `context_packet.md`, set `context_packet_path`, then hash that exact stored packet into `context_packet_hash` before transmission;
 - after every completed Claude response in the default role profile, save the exact assistant-role text to `messages/round-N-claude.md` and set `last_claude_response_path` **before** writing `turn_state=claude_complete`;
 - after processing any nonterminal response that establishes/restates the current plan (Round 0, 1, 2, and blocker-resolution Round 4 when used), save the latest full current plan to `current_plan.md` and update `current_plan_path` before writing `response_processed`;
-- after a valid lock, save the exact `=== LOCKED PLAN ===` block to `locked_plan.md`, set `locked_plan_path`, and only then set `phase=locked`.
+- after a valid lock, save the exact `=== LOCKED PLAN ===` block to external `locked_plan.md`, set `locked_plan_path`, and only then set `phase=locked`;
+- before any repo write, record the implementation baseline; then persist the exact validated lock into the repo as `.gpt-auditor/LOCKED_PLAN.md` (or an explicitly user-selected equivalent), record `repo_locked_plan_path` + SHA-256, and set `phase=repo_lock_persisted`;
+- persist execution approval separately from debate state; approval is valid only for the exact recorded repo locked-plan hash.
 
 A hash without the corresponding stored recovery artifact is insufficient for deterministic resume or continuation-thread rehydration.
 
@@ -180,7 +187,7 @@ Keep the packet to one message. If it is too large, summarize harder or use a ho
 DEFAULT ROLE PROFILE
 Architect / lock owner: Claude Opus 5 Max
 Independent challenger + orchestrator/auditor: GPT-5.6
-Execution backend: <gpt_codex|claude_claude_code>
+Execution backend: <codex|claude_code|other_verified> — if `other_verified`, include the generic executor label
 
 The architect plan below was already produced before this auditor run. Round 0 is synchronization, not a second planning pass. Treat this supplied plan as the current architecture baseline. Do NOT create a new plan from scratch. You may repair only transcription/format ambiguity needed to faithfully anchor it.
 
@@ -423,6 +430,31 @@ The plan is otherwise accepted, but these required lock fields/criteria are malf
 Return only a repaired complete `=== LOCKED PLAN ===`. Do not reopen architecture discussion.
 ```
 
+## [GPT] Repo locked-plan artifact and execution approval gate
+
+A valid architecture lock is necessary but **not sufficient** to begin implementation.
+
+After the external `locked_plan.md` is valid:
+
+1. **Baseline first.** Record git HEAD, complete working-tree status, declared scope, and any needed mixed-file snapshots before the repo locked-plan artifact is written. The repo plan file is itself a run-owned change and must remain visible in the canonical run delta.
+2. **Persist the execution contract in the repo.** Write the exact validated `=== LOCKED PLAN ===` block to `.gpt-auditor/LOCKED_PLAN.md` by default. Use another repo-relative path only when the user explicitly selects one or an established project convention requires an equivalent path. Never overwrite a pre-existing unrelated file silently.
+3. **Hash the exact repo artifact.** Compute SHA-256 over the stored bytes and persist `repo_locked_plan_path` + `repo_locked_plan_hash`. Re-read the file after writing; do not trust the write call alone.
+4. **Backend preflight before asking approval.** Verify the selected executor can operate on the workspace without making implementation writes. If capabilities are missing, block instead of asking the user to approve an impossible execution.
+5. **Summarize from the repo artifact, not chat memory.** Re-read `.gpt-auditor/LOCKED_PLAN.md` and present a compact 3–8 bullet summary of what will be executed. Include material out-of-scope boundaries, the selected execution path in generic capability terms, and any `Approval-sensitive / destructive actions`. Do not re-dump the full plan or expose private/local-only tool names.
+6. **Ask for explicit execution approval.** State the repo path and a short form of the SHA-256. Set `phase=awaiting_execution_approval`, `turn_state=awaiting_execution_approval`, and `execution_approval.status=awaiting`. LOCK itself is not approval.
+7. **Bind approval to the exact hash.** On an explicit `approve`, `approved`, `proceed`, or unambiguous equivalent responding to this gate, persist `approved_plan_hash`, approval evidence, and timestamp. Before the first implementation write, re-read/re-hash the repo plan and require exact equality with `approved_plan_hash`.
+8. **Invalidate on drift.** If the repo plan changes after approval, or a new explicit user instruction materially changes scope, implementation steps, acceptance criteria, out-of-scope boundaries, or destructive actions, set `execution_approval.status=invalidated`. Reconcile the lock through targeted repair/Architecture Escalation as appropriate, rewrite/re-hash the repo artifact, re-summarize, and obtain fresh approval before further implementation writes.
+9. **Chat is non-authoritative during execution.** For task requirements, the approved repo locked-plan artifact outranks remembered debate/session content. Current user messages may pause/cancel work immediately; a task-changing instruction does not silently mutate the contract and instead triggers the invalidation rule above.
+10. **Resume from artifact.** Every executor handoff, fresh context, or resumed run must re-read the repo locked-plan artifact and verify its hash before continuing implementation.
+
+Execution-stage authority is therefore:
+
+1. system/host safety constraints;
+2. current explicit user control instructions (`stop`, `pause`, `cancel`, or a task-changing instruction that invalidates approval);
+3. the exact **approved repo locked-plan artifact**;
+4. current repo facts/harness evidence that do not contradict the lock;
+5. session chat/history and stale inherited guidance as non-authoritative context.
+
 ## [GPT] BLOCKED terminal
 
 On terminal block, write `blocked.md` in the run state directory containing:
@@ -438,25 +470,25 @@ Set `phase=blocked`. Do not execute any part that depends on the unresolved deci
 
 ## [GPT] Execution-backend preflight and harness profile
 
-After lock, set `phase=backend_preflight` and verify the **selected** execution backend can operate on the exact target workspace. Debate transport and execution transport are separate capabilities. Never treat claude.com browser chat as equivalent to Claude Code execution, and never silently fall back to the other backend.
+After the repo locked-plan artifact is persisted and hashed, set `phase=backend_preflight` and verify the **selected** execution backend can operate on the exact target workspace. Debate transport and execution transport are separate capabilities. Never treat claude.com browser chat as equivalent to Claude Code execution, and never silently fall back to the other backend. This preflight may inspect/read but must not make implementation writes; user execution approval is requested only after preflight passes.
 
 If required backend capabilities are missing, record a named backend blocker and stop before the first implementation write. The locked architecture remains valid unless the missing capability itself invalidates a locked assumption.
 
-Before the first implementation write, persist concrete execution provenance separately from the user's coarse backend choice:
+Before the first implementation write, persist concrete execution provenance:
 
-- ChatGPT current session + LocalOps: `execution_family=openai`, `execution_environment=chatgpt_localops`;
 - Codex: `execution_family=openai`, `execution_environment=codex`;
 - Claude Code: `execution_family=anthropic`, `execution_environment=claude_code`;
-- any other supported executor must use `other_verified` plus a human-readable note in state.
+- a custom explicitly supported executor may use `other_verified` plus a human-readable note in state.
 
-Do not report `gpt_codex` as though it proves Codex executed the task; it is only the user's backend-family choice. Final reporting must name the concrete `execution_environment`.
+The default public workflow does not treat the orchestrator chat host as an execution backend and must not require or name a private/local-only tool stack. Final reporting names the concrete `execution_environment` that actually performed the implementation.
 
 Use the lightest load-bearing project harness. Existing repo artifacts are preferred; create a new harness artifact only when it materially improves execution, verification, recovery, or handoff. Do not generate a ceremonial full suite for a small task.
 
-### [GPT] GPT/Codex execution profile
+### [GPT] Codex execution profile
 
-When `execution_backend=gpt_codex`:
+When `execution_backend=codex`:
 
+- begin implementation/resume by reading the approved repo locked-plan artifact and verifying its hash; do not reconstruct task requirements from session chat/history;
 - treat repo-local files as source of truth; use a concise `AGENTS.md` as a routing map when present or genuinely needed, linking outward instead of copying a manual inline;
 - prefer mechanical enforcement over reminders: tests, lint, typecheck, scripts, structural checks, CI, or documented invariants with executable verification;
 - for bugs, reproduce before fixing, isolate root cause, fix minimally, verify the fix, then run broader regression;
@@ -464,34 +496,49 @@ When `execution_backend=gpt_codex`:
 - if execution exposes a reusable missing capability (fixture, test, script, observability path, check), persist it in the right project artifact only when it is load-bearing for future runs;
 - update `TASKS.md`, `BUG_LOG.md`, `DECISIONS.md`, `ARCHITECTURE.md`, or other project state only when those files exist/are needed and the update is factual and in declared scope.
 
-### [GPT] Claude/Claude Code execution profile
+### [GPT] Claude Code execution profile
 
-When `execution_backend=claude_claude_code`:
+When `execution_backend=claude_code`:
 
+- begin implementation/resume by reading the approved repo locked-plan artifact and verifying its hash; do not reconstruct task requirements from session chat/history;
 - use a concise `CLAUDE.md` project contract when present or genuinely needed;
-- hand the executor the locked plan/done-means contract rather than asking it to re-plan architecture;
+- hand the executor the repo locked-plan/done-means contract rather than asking it to re-plan architecture;
 - keep long-running continuation state concise and truthful (for example `HANDOFF.md`) when it materially helps a fresh context continue;
 - use build → skeptical QA → fix → QA/regression until every locked criterion passes;
 - QA must actively look for missing core functionality, stubs, fake/display-only integrations, broken flows, shallow implementation, weak information hierarchy, and visual polish hiding functional failure;
 - when possible, run the product and inspect it as a user with browser/simulator/MCP/screenshots, console/runtime logs, network/API checks, database/data invariants, and end-to-end flows;
 - keep ceremony proportional to risk: simple changes do not require phases/sprints or a full harness suite.
 
+### [GPT] Other verified execution profile
+
+When `execution_backend=other_verified`:
+
+- require an explicit human-readable executor label plus a verified path to the exact target workspace;
+- require equivalent file/edit, command/build/test, runtime-validation, state, and git/snapshot capabilities before approval;
+- begin implementation/resume by reading and hash-verifying the approved repo locked-plan artifact; session chat remains non-authoritative for task requirements;
+- use that executor's native project instructions/harness conventions where they exist, while preserving the same lock, scope, verification, audit, approval, and commit invariants;
+- record `execution_family` truthfully and `execution_environment=other_verified`; keep any private/local-only implementation detail in local run state rather than public docs or user-facing release text;
+- never silently reinterpret the orchestrator/chat host itself as this executor; `other_verified` must be an explicitly selected and capability-verified coding agent path.
+
 ### [GPT] Shared harness decisions intentionally retained/removed
 
 Retain from the former backend-specific harness approach: durable repo state, done-means contracts, skeptical evaluation, reproduce-first debugging, mechanical checks, runtime validation, truthful handoff, and load-bearing risk scaling.
 
-Do **not** retain redundant ceremony that conflicts with this auditor: no mandatory giant discovery questionnaire when plan+repo already answer it, no mandatory human stop after every phase, no per-phase commits, no full harness generation by default, and no second architecture authority beside the locked plan. The auditor's one-final-commit rule remains authoritative.
+Do **not** retain redundant ceremony that conflicts with this auditor: no mandatory giant discovery questionnaire when plan+repo already answer it, no human stops after every phase beyond the single mandatory **post-lock execution approval gate**, no per-phase commits, no full harness generation by default, and no second architecture authority beside the approved repo locked plan. The auditor's one-final-commit rule remains authoritative.
 
 ## [GPT] Execution after lock
 
-1. Record baseline before implementation.
-2. Complete selected-backend preflight; never write through an unverified or different backend.
-3. Prepare only the load-bearing execution-harness context/artifacts required by the selected profile.
-4. Execute the locked plan in bounded increments.
-5. Verify meaningful increments with targeted evidence and the backend's actual build/test/runtime paths.
-6. Solve routine implementation problems locally; for bugs, reproduce/root-cause before fix when applicable.
-7. Do not reopen debate for type errors, CSS, ordinary test fixes, package details, or implementation choices that remain inside the lock.
-8. Re-enter the architect only through Architecture Escalation when new evidence proves a locked architectural assumption false, a required capability absent in a way that invalidates the design, a fundamental data-model incompatibility present, or satisfying the lock would violate a hard constraint.
+1. Record baseline **before writing the repo locked-plan artifact**.
+2. Persist and hash the exact validated lock in the repo at `.gpt-auditor/LOCKED_PLAN.md` (or the explicitly selected equivalent path).
+3. Complete selected-backend preflight without implementation writes; never use an unverified or different backend.
+4. Re-read the repo artifact, summarize the upcoming execution compactly, and obtain explicit user approval bound to its exact hash.
+5. Immediately before the first implementation write, re-read/re-hash the repo plan and require it to match the approved hash.
+6. Prepare only the load-bearing execution-harness context/artifacts required by the selected profile, using the repo plan as the task contract.
+7. Execute the approved repo locked plan in bounded increments. On handoff/resume, re-read and hash-check it before continuing.
+8. Verify meaningful increments with targeted evidence and the backend's actual build/test/runtime paths.
+9. Solve routine implementation problems locally; for bugs, reproduce/root-cause before fix when applicable.
+10. Do not reopen debate for type errors, CSS, ordinary test fixes, package details, or implementation choices that remain inside the lock.
+11. Re-enter the architect only through Architecture Escalation when new evidence proves a locked architectural assumption false, a required capability absent in a way that invalidates the design, a fundamental data-model incompatibility present, or satisfying the lock would violate a hard constraint. Any revised lock must replace/re-hash the repo artifact and receive fresh user approval before further implementation writes.
 
 ## [GPT] Scope discipline, baseline evidence, and canonical run delta
 
@@ -541,12 +588,12 @@ Send this to the recorded architect/lock owner using the run's verified debate t
 Audit against artifacts, not implementation intent:
 
 - original user goal
-- locked plan / done-means contract
+- **approved repo locked-plan artifact / done-means contract** and its approved hash
 - run-specific delta
 - fresh test/verification evidence
 - relevant existing project-harness state when present
 
-The orchestrator/auditor owns this pass independently from the executor. If Claude/Claude Code executed, GPT audit provides cross-model separation under the default profile. If GPT/Codex executed, use a fresh GPT context when the host supports it cheaply; otherwise explicitly ignore remembered implementation rationale unless backed by artifacts.
+The orchestrator/auditor owns this pass independently from the executor. If Claude Code executed, GPT audit provides cross-model separation under the default profile. If Codex executed, use a fresh GPT audit context when the host supports it cheaply; otherwise explicitly ignore remembered implementation rationale unless backed by artifacts.
 
 For runnable apps/websites, verify the product as a user when reasonably possible rather than stopping at static code/build success. Use the strongest available runtime evidence: browser/simulator/Playwright/MCP interaction, screenshots where useful, console/runtime logs, network/API checks, database/data invariants, and end-to-end critical flows.
 
@@ -577,6 +624,7 @@ Fix P0/P1 only unless the user approves optional work. Then rerun targeted check
 After regression passes, write `final_verification.md` in the external run-state directory, set `final_verification_path`, and include concise evidence for:
 
 - concrete `execution_environment`;
+- approved repo locked-plan path/hash and confirmation that execution used that artifact without unapproved drift;
 - acceptance criteria status;
 - canonical run-delta coverage (all run-owned paths reviewed);
 - regression checks;
@@ -693,14 +741,18 @@ Treat these as state-machine failures, not suggestions:
 - continuing a `new` session after Round 0 without capturing/persisting the concrete Claude conversation URL **and** verifying the exact requested Claude title
 - consuming or sending a default-profile architecture round on any Claude model other than Opus 5 Max
 - executing on a backend different from the user's recorded `execution_backend`
+- implementation write before the exact validated lock is persisted and hashed inside the repo
 - implementation write before selected-backend capability preflight passes
+- implementation write before explicit user execution approval is bound to the current repo locked-plan hash
+- continuing implementation after the repo locked-plan hash changes without invalidating approval and obtaining fresh approval
+- reconstructing execution requirements from session chat/history instead of re-reading the approved repo locked-plan artifact on start/resume/handoff
 - audit/scope/prohibited-path completion based only on plain `git diff` without accounting for untracked/deleted paths
 - final verification missing an `Execution deviations` section
 - reporting a runtime as durable when only current liveness is proven
 - calling an issue `pre-existing` without matching baseline evidence
 - spending a challenge round on a protocol contradiction that was mechanically knowable and should have been normalized before Round 0
 - accepting a lock with an objective semantic correctness defect after the semantic sanity gate
-- reporting `gpt_codex` as the concrete executor instead of the verified `execution_environment`
+- reporting an orchestrator/chat host as though it were the executor instead of the verified `execution_environment`
 - execution after terminal BLOCKED
 - completion claim without fresh evidence
 - auto-pushing a repository
