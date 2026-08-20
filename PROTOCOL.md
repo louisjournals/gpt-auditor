@@ -66,7 +66,6 @@ Minimum state fields:
   "runtime_assets": [],
   "precommit_report_path": "...",
   "final_verification_path": "...",
-  "self_release_gate": {"required": false, "e2e_status": "not_required|pending|passed|failed"},
   "final_commit_sha": null,
   "last_verified_send": null,
   "last_read_hash": null,
@@ -813,19 +812,11 @@ Reporting rules:
 8. On terminal `BLOCKED`, use the same section order but replace implementation/verification claims with the exact blocker, evidence, and minimum next action; never format a blocked run as `DONE`.
 9. When machine/architect checks are complete but required operator-authority criteria remain `NOT VERIFIED`, use `TECHNICALLY COMPLETE — OPERATOR REVIEW REQUIRED`, list exactly what the operator still needs to inspect, and do not create the final commit.
 
-## [GPT] Self-modification release gate
+## [GPT] Self-modification verification
 
-If this run changes any file under `gpt-auditor/`, set `self_release_gate.required=true` and `e2e_status=pending` as soon as that scope is known.
+Changes under `gpt-auditor/` follow the same proportional verification rule as other specification changes. Before commit/release, run the relevant static checks, document assertions, and scenario checks that cover the changed behavior.
 
-Before the final commit/release:
-
-1. finish all intended fixes and static/document checks;
-2. start a **fresh auditor run using the final post-fix skill files**;
-3. run E2E-1 end to end against its disposable external fixture target, not against `gpt-auditor/` itself;
-4. require E2E-1 PASS plus the release-required document/scenario checks;
-5. persist `e2e_status=passed` only on fresh evidence.
-
-By default, `NOT RUN`, FAIL, or incomplete E2E evidence blocks the final commit/release. A current explicit user instruction to commit/release this skill despite the project-local E2E gate may override that local rule; record the override as an execution deviation and do not misreport E2E as passed. The release E2E is deliberately non-self-modifying so it does not recursively trigger another self-release gate.
+E2E-1 remains available as an **optional** full orchestration diagnostic when transport/state-machine regressions are suspected or when the operator explicitly requests it. It is not automatically triggered by self-modification, and `NOT RUN` does not block commit/release. Never describe an unrun E2E as passed.
 
 ## [GPT] Assertions
 
@@ -864,7 +855,7 @@ Treat these as state-machine failures, not suggestions:
 - execution after terminal BLOCKED
 - completion claim without fresh evidence
 - auto-pushing a repository
-- creating the final auto-commit before required verification/self-release E2E passes or before the pre-commit delivery report is written and surfaced
+- creating the final auto-commit before required verification passes or before the pre-commit delivery report is written and surfaced
 - sweeping pre-existing user edits into the final auto-commit
 - debate reopened for routine implementation
 

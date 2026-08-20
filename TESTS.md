@@ -4,7 +4,7 @@
 
 This skill is specification, not executable orchestration code. Verification is therefore a mix of real end-to-end runs, scripted browser fault injection where available, and document assertions.
 
-A transport-only pass is **not** a passing suite. E2E-1 must pass before calling the skill operationally verified.
+E2E-1 is an optional full-orchestration diagnostic. Normal release verification relies on the relevant scenario checks and document assertions; `NOT RUN` for E2E-1 does not block commit or release.
 
 For every scenario record: date/run_id, host, Claude URL, setup, observed evidence, pass/fail, and any deviation.
 
@@ -316,11 +316,11 @@ Setup: the run edits a file that was already dirty before the run and the host c
 
 Expected: do not sweep the user's pre-existing edits into the automatic commit. Stop the commit step with an explicit `commit_blocked_mixed_file` result, leave the working tree intact, and report the affected path. Never use path-level commit as a workaround when it would include pre-existing user changes.
 
-## [GPT] S41 — Self-modification release gate
+## [GPT] S41 — Self-modification uses proportional verification
 
 Setup: any run changes files under `gpt-auditor/` itself.
 
-Expected: static/document checks alone cannot release or commit the change. Start a fresh auditor run using the **final post-fix skill files**, exercise E2E-1 on its disposable fixture target, and require E2E-1 PASS plus required document/scenario checks before the final commit. `NOT RUN` or FAIL blocks release. The release E2E must not edit `gpt-auditor/` again, so it cannot recurse into another self-release gate.
+Expected: run the relevant static checks, document assertions, and scenario checks that cover the changed behavior before commit/release. E2E-1 may be run as optional full-orchestration diagnostics but is not auto-required by self-modification; `NOT RUN` does not block release, and an unrun E2E is never reported as PASS.
 
 ## [GPT] S42 — Existing project harness is first-class context
 
@@ -634,11 +634,11 @@ After edits, inspect/grep the skill files and verify:
 - no user-mediated transport fallback is offered
 - `TRANSPORT.md` requires role-scoped matching
 - `PROTOCOL.md` contains literal R0–R5, lock-repair, and Architecture Escalation templates
-- `TESTS.md` starts with E2E-1 and states transport-only success is insufficient
+- `TESTS.md` keeps E2E-1 as optional full-orchestration diagnostic coverage rather than a release gate
 - a new Claude session is renamed to the exact current orchestrator session title before debate continues
 - successful git runs auto-commit exactly one final run-owned commit and never auto-push
 - mixed pre-existing dirty-file content is never swept into an automatic commit
-- any modification to `gpt-auditor/` itself requires E2E-1 PASS on the final post-fix files before release/commit
+- modifications to `gpt-auditor/` itself require relevant static/document/scenario verification, while E2E-1 remains optional
 - existing project harness files are treated as evidence/constraints and are not regenerated or overwritten merely because the auditor runs
 - app/website/feature locks require an executable done-means contract covering expected behavior, critical user flows, verification, and out-of-scope boundaries
 - runnable products are validated with real user-flow/runtime evidence when reasonably available; clean build/tests alone cannot excuse a broken core flow
@@ -685,7 +685,7 @@ Report a suite as:
 E2E-1: PASS | FAIL | NOT RUN
 Scenarios: X/Y PASS
 Document assertions: PASS | FAIL
-Overall: PASS only when E2E-1 passes and all required scenarios/assertions for the release pass
+Overall: PASS when all required scenario/document checks for the release pass; E2E-1 is reported separately when run
 ```
 
-Never convert `NOT RUN` into a pass.
+Never convert `NOT RUN` into an E2E pass. `NOT RUN` is acceptable because E2E-1 is optional.

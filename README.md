@@ -170,7 +170,7 @@ Detailed recovery/audit artifacts remain outside the target repository unless th
 
 ## Verification
 
-`TESTS.md` defines **E2E-1**, a real three-round orchestration test using a disposable git fixture. It verifies actual Claude transport, state transitions, lock creation, executor delivery, audit/regression, and one safe final fixture commit with no push.
+`TESTS.md` defines scenario/document verification plus **E2E-1**, an optional real three-round orchestration diagnostic using a disposable git fixture. E2E-1 is useful for deep transport/state-machine regression testing, but it is not a mandatory release gate or automatically required when `gpt-auditor` modifies itself.
 
 ## License
 

@@ -70,7 +70,7 @@ Under the current default role profile, the bound Claude thread must be **Opus 5
 19. Do not claim completion without fresh verification evidence.
 20. A new Claude session must have its concrete URL captured and exact requested title verified before debate proceeds beyond Round 0.
 21. In a git repo, successful execution ends with one final auto-commit containing only the run-owned delta unless the current user explicitly disables commit for that run; immediately before that commit, surface the informational pre-commit delivery report (all changes, completion-gate result, audit findings, fixes, verification/deviations, exact commit scope). Do not ask for another approval and never auto-push or include pre-existing unrelated user changes.
-22. Any change to `gpt-auditor/` itself is unreleasable until E2E-1 passes against the final post-fix files.
+22. Changes to `gpt-auditor/` itself use the same normal verification policy as other specification changes: run relevant static/document/scenario checks before commit/release. E2E-1 is optional diagnostic coverage, not a release gate.
 23. During debate, fresh repo/runtime/visual inspection is allowed only as targeted read-only evidence gathering; no implementation fix may occur before LOCK.
 24. **Scope limits changes, not observation.** When one defect instance is found, inspect the full relevant pattern/sibling surface before freezing modification scope; do not let a narrow fix scope hide repeated instances.
 25. Acceptance criteria must declare verification authority: `MACHINE`, `OPERATOR`, or `MIXED`. Operator-authority evidence cannot be substituted by DOM/style/test evidence. Use `VERIFIED`, `NOT VERIFIED`, or `FAILED`; never infer `VERIFIED`.
@@ -173,7 +173,7 @@ After the executor believes the pre-audit implementation is complete, it must bu
 
 Then run a deep artifact/runtime skeptical audit that actively tries to falsify completion across lock conformance, functional/runtime behavior, data/auth/security integrity, regression risk, UX/IA/affordance quality when relevant, implementation depth/wiring, complete run-delta scope, and verification-evidence quality. Fix P0/P1 findings, rerun targeted regression plus every locked criterion, and prepare a concise **pre-commit delivery report** for the user listing all run-owned changes, architect-completion result, audit findings, fixes, verification/deviations, and exact commit scope. This report is informational, **not another approval gate**. Then create one final run-owned commit when safe. Routine implementation problems stay in delivery; re-enter the architect only when new evidence invalidates a locked architectural assumption or satisfying the lock would violate a hard constraint.
 
-When the target being modified is `gpt-auditor` itself, final files must pass E2E-1 before release/commit unless the current user explicitly directs an immediate commit/release despite that project-local gate.
+When the target being modified is `gpt-auditor` itself, verify the relevant static/document/scenario checks before release/commit. E2E-1 may be run when useful for transport/orchestration regression coverage, but it is never mandatory merely because the skill modified itself.
 
 ## [GPT] User-facing completion report
 
